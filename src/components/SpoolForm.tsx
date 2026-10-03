@@ -35,6 +35,7 @@ export default function SpoolForm({
   const [brand, setBrand] = useState(start?.brand ?? '');
   const [material, setMaterial] = useState(start?.material ?? 'PLA');
   const [color, setColor] = useState(start?.color ?? '');
+  const [isRefill, setIsRefill] = useState(start?.isRefill ?? false);
   const [weight, setWeight] = useState(toText(start?.totalWeightG ?? 1000));
   const [price, setPrice] = useState(startPrice !== undefined ? toText(startPrice) : '');
   const [purchasedAt, setPurchasedAt] = useState(spool?.purchasedAt ?? todayIso());
@@ -127,6 +128,7 @@ export default function SpoolForm({
       barcode: spool?.barcode ?? barcode ?? null,
       openedAt: opened || null,
       notes: notes.trim(),
+      isRefill,
     });
   }
 
@@ -148,6 +150,18 @@ export default function SpoolForm({
         placeholder="PLA, PETG…"
       />
       <Field label="Color" value={color} onChangeText={setColor} placeholder="e.g. Galaxy Black" />
+      <View style={styles.field}>
+        <Text style={styles.label}>Comes as</Text>
+        <View style={styles.segment}>
+          <SegmentButton label="On a spool" active={!isRefill} onPress={() => setIsRefill(false)} />
+          <SegmentButton label="Refill" active={isRefill} onPress={() => setIsRefill(true)} />
+        </View>
+        <Text style={styles.hint}>
+          {isRefill
+            ? 'Filament only, no reel. You load it onto a reusable spool.'
+            : 'Filament comes wound on its own reel.'}
+        </Text>
+      </View>
       <Field
         label="Filament weight when new (g)"
         value={weight}
@@ -178,8 +192,12 @@ export default function SpoolForm({
         </Pressable>
       </View>
       <Field
-        label="Empty spool weight (g)"
-        hint="Weight of the empty reel. Check the brand's website or weigh an empty one. Usually 150–250 g."
+        label={isRefill ? 'Reusable spool weight (g)' : 'Empty spool weight (g)'}
+        hint={
+          isRefill
+            ? 'Weight of the empty reusable spool you load this refill onto, so scale readings work.'
+            : "Weight of the empty reel. Check the brand's website or weigh an empty one. Usually 150–250 g."
+        }
         value={emptySpool}
         onChangeText={changeEmptySpool}
         numeric
@@ -188,7 +206,11 @@ export default function SpoolForm({
       <Text style={styles.section}>How much is left?</Text>
       <Field
         label="Weigh it: scale reading (g)"
-        hint="Put the whole spool on a kitchen scale. The empty reel weight is subtracted for you."
+        hint={
+          isRefill
+            ? 'Put the refill, loaded on its reusable spool, on a kitchen scale. The spool weight is subtracted for you.'
+            : 'Put the whole spool on a kitchen scale. The empty reel weight is subtracted for you.'
+        }
         value={scaleReading}
         onChangeText={changeScaleReading}
         placeholder="e.g. 640"
@@ -196,7 +218,8 @@ export default function SpoolForm({
       />
       {scaleReading && Number(emptySpool || 0) === 0 ? (
         <Text style={styles.warning}>
-          Tip: enter the empty spool weight above, or the reel will be counted as filament.
+          Tip: enter the {isRefill ? 'reusable' : 'empty'} spool weight above, or the reel will be
+          counted as filament.
         </Text>
       ) : null}
       <Field label="Filament left (g)" value={remaining} onChangeText={changeRemaining} numeric />
@@ -228,6 +251,22 @@ export default function SpoolForm({
         </View>
       ) : null}
     </ScrollView>
+  );
+}
+
+function SegmentButton(props: { label: string; active: boolean; onPress: () => void }) {
+  const styles = useStyles();
+  return (
+    <Pressable
+      onPress={props.onPress}
+      style={[styles.segmentButton, props.active && styles.segmentButtonActive]}
+      accessibilityRole="button"
+      accessibilityState={{ selected: props.active }}
+    >
+      <Text style={[styles.segmentText, props.active && styles.segmentTextActive]}>
+        {props.label}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -295,6 +334,11 @@ const useStyles = themedStyles((c) => ({
     borderRadius: 6,
   },
   quickText: { fontSize: 14, color: c.text },
+  segment: { flexDirection: 'row', backgroundColor: c.segment, borderRadius: 10, padding: 3 },
+  segmentButton: { flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: 'center' },
+  segmentButtonActive: { backgroundColor: c.segmentActive },
+  segmentText: { fontSize: 15, color: c.textSecondary },
+  segmentTextActive: { color: c.text, fontWeight: '600' },
   warning: { color: c.warningText, fontSize: 13 },
   notice: { fontSize: 14, padding: 12, borderRadius: 8, overflow: 'hidden' },
   noticeKnown: { backgroundColor: c.noticeKnownBg, color: c.noticeKnownText },

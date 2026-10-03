@@ -38,6 +38,7 @@ export default function ReportsScreen({ spools }: Props) {
   const inPeriod = period === 'year' ? boughtIn(spools, thisYear) : spools;
   const byMaterial = groupTotals(inPeriod, (s) => s.material);
   const byBrand = groupTotals(inPeriod, (s) => s.brand);
+  const byType = groupTotals(inPeriod, (s) => (s.isRefill ? 'Refill' : 'On a spool'));
 
   if (spools.length === 0) {
     return (
@@ -106,6 +107,9 @@ export default function ReportsScreen({ spools }: Props) {
       <Card title="By brand">
         <Breakdown groups={byBrand} />
       </Card>
+      <Card title="Refills vs. spools">
+        <Breakdown groups={byType} />
+      </Card>
 
       <Card title="Purchase history">
         {inPeriod.length === 0 ? (
@@ -116,6 +120,7 @@ export default function ReportsScreen({ spools }: Props) {
             <View style={{ flex: 1 }}>
               <Text style={styles.historyName}>
                 {s.brand} {s.material} · {s.color}
+                {s.isRefill ? ' · refill' : ''}
               </Text>
               <Text style={styles.muted}>
                 {s.purchasedAt}

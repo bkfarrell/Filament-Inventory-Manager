@@ -22,7 +22,10 @@ export default function SpoolCard({ spool, onUse, onEdit, onDelete }: Props) {
         <Text style={styles.name}>
           {spool.brand} {spool.material}
         </Text>
-        {low ? <Text style={styles.lowBadge}>LOW</Text> : null}
+        <View style={styles.badges}>
+          {spool.isRefill ? <Text style={styles.refillBadge}>Refill</Text> : null}
+          {low ? <Text style={styles.lowBadge}>LOW</Text> : null}
+        </View>
       </View>
       <Text style={styles.color}>{spool.color}</Text>
 
@@ -76,9 +79,25 @@ const useStyles = themedStyles((c) => ({
     borderColor: c.border,
   },
   cardLow: { borderColor: c.warning },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  name: { fontSize: 17, fontWeight: '600', color: c.text },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+  },
+  name: { fontSize: 17, fontWeight: '600', color: c.text, flexShrink: 1 },
   color: { fontSize: 15, color: c.textSecondary },
+  badges: { flexDirection: 'row', gap: 6 },
+  refillBadge: {
+    color: c.textSecondary,
+    backgroundColor: c.track,
+    fontSize: 12,
+    fontWeight: '600',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    overflow: 'hidden',
+  },
   lowBadge: {
     color: c.onAccent,
     backgroundColor: c.warning,

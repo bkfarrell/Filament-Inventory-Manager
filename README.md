@@ -29,6 +29,9 @@ phone** in a small SQLite database, so there are no servers or accounts to set u
   might need drying). It's filled in automatically the first time you log a print, and each
   card shows "Sealed" or how many days ago it was opened
 - **Notes** on each spool, e.g. best print temperature or quirks, shown on its card
+- **Spool or refill:** mark whether filament came on its own reel or as a refill for a reusable
+  spool. Refills get a tag on their card, scanned barcodes remember the choice, and Reports
+  compares what you spend on refills vs. spools
 - **Dark mode:** follows your phone's light/dark setting automatically, and switches live
   when you change it
 - Tap a spool to edit it: fix any detail or set exactly how much filament is left
