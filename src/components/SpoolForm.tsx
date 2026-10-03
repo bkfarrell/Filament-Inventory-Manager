@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { Button, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import type { NewSpool, Spool } from '../db';
+import type { NewSpool, Product, Spool } from '../db';
 
 type Props = {
   spool?: Spool; // when given, the form edits this spool; otherwise it adds a new one
+  barcode?: string; // set when a new spool comes from scanning a box
+  product?: Product | null; // what the app remembers about that barcode, if anything
   onSave: (spool: NewSpool) => void;
   onCancel: () => void;
   onDelete?: () => void;
@@ -13,15 +15,20 @@ type Props = {
 // Turns a stored number into text for an input box, without long decimals.
 const toText = (n: number) => String(Math.round(n * 100) / 100);
 
-export default function SpoolForm({ spool, onSave, onCancel, onDelete }: Props) {
+export default function SpoolForm({ spool, barcode, product, onSave, onCancel, onDelete }: Props) {
   const editing = spool !== undefined;
-  const [brand, setBrand] = useState(spool?.brand ?? '');
-  const [material, setMaterial] = useState(spool?.material ?? 'PLA');
-  const [color, setColor] = useState(spool?.color ?? '');
-  const [weight, setWeight] = useState(toText(spool?.totalWeightG ?? 1000));
-  const [price, setPrice] = useState(spool ? toText(spool.pricePaid) : '');
-  const [emptySpool, setEmptySpool] = useState(toText(spool?.emptySpoolWeightG ?? 0));
-  const [remaining, setRemaining] = useState(toText(spool?.remainingWeightG ?? 1000));
+  // Start from the spool being edited, else the remembered product, else blanks.
+  const start = spool ?? product;
+  const startPrice = spool?.pricePaid ?? product?.lastPricePaid;
+  const [brand, setBrand] = useState(start?.brand ?? '');
+  const [material, setMaterial] = useState(start?.material ?? 'PLA');
+  const [color, setColor] = useState(start?.color ?? '');
+  const [weight, setWeight] = useState(toText(start?.totalWeightG ?? 1000));
+  const [price, setPrice] = useState(startPrice !== undefined ? toText(startPrice) : '');
+  const [emptySpool, setEmptySpool] = useState(toText(start?.emptySpoolWeightG ?? 0));
+  const [remaining, setRemaining] = useState(
+    toText(spool?.remainingWeightG ?? start?.totalWeightG ?? 1000)
+  );
   const [remainingTouched, setRemainingTouched] = useState(editing);
   const [scaleReading, setScaleReading] = useState('');
   const [error, setError] = useState('');
@@ -89,12 +96,20 @@ export default function SpoolForm({ spool, onSave, onCancel, onDelete }: Props) 
       emptySpoolWeightG,
       pricePaid,
       purchasedAt: spool?.purchasedAt ?? new Date().toISOString().slice(0, 10),
+      barcode: spool?.barcode ?? barcode ?? null,
     });
   }
 
   return (
     <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
       <Text style={styles.title}>{editing ? 'Edit spool' : 'Add a spool'}</Text>
+      {barcode && !editing ? (
+        <Text style={[styles.notice, product ? styles.noticeKnown : styles.noticeNew]}>
+          {product
+            ? `Recognized barcode ${barcode}. Check the details and price, then tap Save.`
+            : `New barcode ${barcode}. Fill in the details once and the app will remember them next time you scan this product.`}
+        </Text>
+      ) : null}
       <Field label="Brand" value={brand} onChangeText={setBrand} placeholder="e.g. Prusament" />
       <Field label="Material" value={material} onChangeText={setMaterial} placeholder="PLA, PETG…" />
       <Field label="Color" value={color} onChangeText={setColor} placeholder="e.g. Galaxy Black" />
@@ -182,6 +197,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   warning: { color: '#b9770e', fontSize: 13 },
+  notice: { fontSize: 14, padding: 12, borderRadius: 8, overflow: 'hidden' },
+  noticeKnown: { backgroundColor: '#e8f6ee', color: '#1e7a46' },
+  noticeNew: { backgroundColor: '#eaf1fd', color: '#1f4fa8' },
   error: { color: '#c0392b' },
   buttons: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 },
   delete: { marginTop: 16 },

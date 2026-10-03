@@ -9,6 +9,10 @@ phone** in a small SQLite database, so there are no servers or accounts to set u
 ## What works today
 
 - Add spools (brand, material, color, weight, price paid)
+- **Scan the barcode on a filament box.** The first time, you fill in the details and the app
+  remembers that barcode. The next box with the same barcode fills the form in for you, so you
+  just check the price and tap Save. Everything is remembered on your phone, with no internet
+  lookup.
 - See how much is left on each spool, with a progress bar
 - Tap **−10 g / −50 g / −100 g** to log filament used by a print
 - Spools at or under 200 g are flagged **LOW** (threshold is `LOW_STOCK_THRESHOLD_G` in `src/db.ts`)
@@ -61,7 +65,8 @@ right away.** That's the main loop you'll use while building.
 | File | What it does |
 | --- | --- |
 | `App.tsx` | The main screen: the list of spools, the summary, and the "Add spool" button |
-| `src/db.ts` | The database: table layout and functions to add, update, and delete spools |
+| `src/db.ts` | The database: spools, remembered barcodes ("products"), and functions to read and change them |
+| `src/components/BarcodeScanner.tsx` | The camera screen that reads a box's barcode |
 | `src/notifications.ts` | Asks for notification permission and sends the "running low" alert |
 | `src/components/SpoolCard.tsx` | How a single spool looks in the list |
 | `src/components/SpoolForm.tsx` | The form for adding and editing a spool, including the scale calculator |

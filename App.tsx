@@ -4,20 +4,32 @@ import { useCallback, useEffect, useState } from 'react';
 import { Alert, FlatList, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
+import BarcodeScanner from './src/components/BarcodeScanner';
 import SpoolCard from './src/components/SpoolCard';
 import SpoolForm from './src/components/SpoolForm';
 import {
   addSpool,
   deleteSpool,
+  findProduct,
   isLowStock,
   listSpools,
   migrateDb,
+  normalizeBarcode,
   recordUsage,
+  rememberProduct,
   updateSpool,
   type NewSpool,
+  type Product,
   type Spool,
 } from './src/db';
 import { justWentLow, notifyLowStock, setupNotifications } from './src/notifications';
+
+// What's open on top of the list right now.
+type Screen =
+  | null
+  | { kind: 'scan' }
+  | { kind: 'add'; barcode?: string; product?: Product | null }
+  | { kind: 'edit'; spool: Spool };
 
 export default function App() {
   return (
@@ -34,8 +46,7 @@ export default function App() {
 function InventoryScreen() {
   const db = useSQLiteContext();
   const [spools, setSpools] = useState<Spool[]>([]);
-  // Which form is open: none, "add a new spool", or "edit this spool".
-  const [form, setForm] = useState<null | 'add' | Spool>(null);
+  const [screen, setScreen] = useState<Screen>(null);
 
   const refresh = useCallback(async () => {
     setSpools(await listSpools(db));
@@ -61,15 +72,25 @@ function InventoryScreen() {
     }
   }
 
+  async function handleScanned(raw: string) {
+    const barcode = normalizeBarcode(raw);
+    const product = await findProduct(db, barcode);
+    setScreen({ kind: 'add', barcode, product });
+  }
+
   async function handleSave(values: NewSpool) {
-    const editing = form !== 'add' ? form : null;
-    setForm(null);
-    if (editing) {
-      await updateSpool(db, editing.id, values);
-      await refreshAndCheckLow(editing);
+    const current = screen;
+    setScreen(null);
+    if (current?.kind === 'edit') {
+      await updateSpool(db, current.spool.id, values);
+      await refreshAndCheckLow(current.spool);
     } else {
       await addSpool(db, values);
       await refresh();
+    }
+    // Remember (or update) what this barcode means for the next scan.
+    if (values.barcode) {
+      await rememberProduct(db, values.barcode, values);
     }
   }
 
@@ -85,7 +106,7 @@ function InventoryScreen() {
         text: 'Delete',
         style: 'destructive',
         onPress: async () => {
-          setForm(null);
+          setScreen(null);
           await deleteSpool(db, spool.id);
           await refresh();
         },
@@ -114,32 +135,41 @@ function InventoryScreen() {
           <SpoolCard
             spool={item}
             onUse={(g) => handleUse(item, g)}
-            onEdit={() => setForm(item)}
+            onEdit={() => setScreen({ kind: 'edit', spool: item })}
             onDelete={() => handleDelete(item)}
           />
         )}
         ListEmptyComponent={
-          <Text style={styles.empty}>No spools yet. Tap “Add spool” to log your first one.</Text>
+          <Text style={styles.empty}>No spools yet. Tap “Scan box” or “Add spool” to log your first one.</Text>
         }
       />
 
-      <Pressable style={styles.addButton} onPress={() => setForm('add')}>
-        <Text style={styles.addText}>+ Add spool</Text>
-      </Pressable>
+      <View style={styles.buttonRow}>
+        <Pressable style={[styles.actionButton, styles.scanButton]} onPress={() => setScreen({ kind: 'scan' })}>
+          <Text style={styles.actionText}>Scan box</Text>
+        </Pressable>
+        <Pressable style={styles.actionButton} onPress={() => setScreen({ kind: 'add' })}>
+          <Text style={styles.actionText}>+ Add spool</Text>
+        </Pressable>
+      </View>
 
-      <Modal visible={form !== null} animationType="slide" onRequestClose={() => setForm(null)}>
-        <SafeAreaView style={{ flex: 1 }}>
-          {form !== null ? (
+      <Modal visible={screen !== null} animationType="slide" onRequestClose={() => setScreen(null)}>
+        {screen?.kind === 'scan' ? (
+          <BarcodeScanner onScanned={handleScanned} onCancel={() => setScreen(null)} />
+        ) : screen !== null ? (
+          <SafeAreaView style={{ flex: 1 }}>
             <SpoolForm
               // A new key resets the form's fields each time it opens.
-              key={form === 'add' ? 'add' : form.id}
-              spool={form === 'add' ? undefined : form}
+              key={screen.kind === 'edit' ? screen.spool.id : `add-${screen.barcode ?? ''}`}
+              spool={screen.kind === 'edit' ? screen.spool : undefined}
+              barcode={screen.kind === 'add' ? screen.barcode : undefined}
+              product={screen.kind === 'add' ? screen.product : undefined}
               onSave={handleSave}
-              onCancel={() => setForm(null)}
-              onDelete={form === 'add' ? undefined : () => handleDelete(form)}
+              onCancel={() => setScreen(null)}
+              onDelete={screen.kind === 'edit' ? () => handleDelete(screen.spool) : undefined}
             />
-          ) : null}
-        </SafeAreaView>
+          </SafeAreaView>
+        ) : null}
       </Modal>
     </SafeAreaView>
   );
@@ -152,14 +182,19 @@ const styles = StyleSheet.create({
   summary: { fontSize: 15, color: '#555', marginTop: 2 },
   list: { paddingHorizontal: 16, paddingBottom: 100, gap: 12 },
   empty: { textAlign: 'center', color: '#888', marginTop: 40, fontSize: 16 },
-  addButton: {
+  buttonRow: {
     position: 'absolute',
     right: 20,
     bottom: 36,
+    flexDirection: 'row',
+    gap: 10,
+  },
+  actionButton: {
     backgroundColor: '#2d6cdf',
     paddingHorizontal: 20,
     paddingVertical: 14,
     borderRadius: 28,
   },
-  addText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  scanButton: { backgroundColor: '#1e8a5a' },
+  actionText: { color: '#fff', fontSize: 16, fontWeight: '600' },
 });
