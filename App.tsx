@@ -4,8 +4,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { Alert, FlatList, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
-import AddSpoolForm from './src/components/AddSpoolForm';
 import SpoolCard from './src/components/SpoolCard';
+import SpoolForm from './src/components/SpoolForm';
 import {
   addSpool,
   deleteSpool,
@@ -13,6 +13,7 @@ import {
   listSpools,
   migrateDb,
   recordUsage,
+  updateSpool,
   type NewSpool,
   type Spool,
 } from './src/db';
@@ -33,7 +34,8 @@ export default function App() {
 function InventoryScreen() {
   const db = useSQLiteContext();
   const [spools, setSpools] = useState<Spool[]>([]);
-  const [adding, setAdding] = useState(false);
+  // Which form is open: none, "add a new spool", or "edit this spool".
+  const [form, setForm] = useState<null | 'add' | Spool>(null);
 
   const refresh = useCallback(async () => {
     setSpools(await listSpools(db));
@@ -48,21 +50,32 @@ function InventoryScreen() {
     setupNotifications().catch((e) => console.warn('Notifications unavailable', e));
   }, []);
 
-  async function handleSave(spool: NewSpool) {
-    await addSpool(db, spool);
-    setAdding(false);
-    await refresh();
+  // Reloads the list, then sends a notification if `before` just became low.
+  async function refreshAndCheckLow(before: Spool) {
+    const updated = await listSpools(db);
+    setSpools(updated);
+
+    const after = updated.find((s) => s.id === before.id);
+    if (after && justWentLow(before, after)) {
+      await notifyLowStock(after);
+    }
+  }
+
+  async function handleSave(values: NewSpool) {
+    const editing = form !== 'add' ? form : null;
+    setForm(null);
+    if (editing) {
+      await updateSpool(db, editing.id, values);
+      await refreshAndCheckLow(editing);
+    } else {
+      await addSpool(db, values);
+      await refresh();
+    }
   }
 
   async function handleUse(spool: Spool, grams: number) {
     await recordUsage(db, spool.id, grams);
-    const updated = await listSpools(db);
-    setSpools(updated);
-
-    const after = updated.find((s) => s.id === spool.id);
-    if (after && justWentLow(spool, after)) {
-      await notifyLowStock(after);
-    }
+    await refreshAndCheckLow(spool);
   }
 
   function handleDelete(spool: Spool) {
@@ -72,6 +85,7 @@ function InventoryScreen() {
         text: 'Delete',
         style: 'destructive',
         onPress: async () => {
+          setForm(null);
           await deleteSpool(db, spool.id);
           await refresh();
         },
@@ -100,6 +114,7 @@ function InventoryScreen() {
           <SpoolCard
             spool={item}
             onUse={(g) => handleUse(item, g)}
+            onEdit={() => setForm(item)}
             onDelete={() => handleDelete(item)}
           />
         )}
@@ -108,13 +123,22 @@ function InventoryScreen() {
         }
       />
 
-      <Pressable style={styles.addButton} onPress={() => setAdding(true)}>
+      <Pressable style={styles.addButton} onPress={() => setForm('add')}>
         <Text style={styles.addText}>+ Add spool</Text>
       </Pressable>
 
-      <Modal visible={adding} animationType="slide" onRequestClose={() => setAdding(false)}>
+      <Modal visible={form !== null} animationType="slide" onRequestClose={() => setForm(null)}>
         <SafeAreaView style={{ flex: 1 }}>
-          <AddSpoolForm onSave={handleSave} onCancel={() => setAdding(false)} />
+          {form !== null ? (
+            <SpoolForm
+              // A new key resets the form's fields each time it opens.
+              key={form === 'add' ? 'add' : form.id}
+              spool={form === 'add' ? undefined : form}
+              onSave={handleSave}
+              onCancel={() => setForm(null)}
+              onDelete={form === 'add' ? undefined : () => handleDelete(form)}
+            />
+          ) : null}
         </SafeAreaView>
       </Modal>
     </SafeAreaView>

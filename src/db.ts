@@ -8,6 +8,7 @@ export type Spool = {
   color: string;
   totalWeightG: number; // filament weight when new, in grams (usually 1000)
   remainingWeightG: number; // filament weight left, in grams
+  emptySpoolWeightG: number; // weight of the empty reel, so a scale reading can be converted
   pricePaid: number; // what you paid for the spool
   purchasedAt: string; // ISO date, e.g. 2026-10-03
 };
@@ -17,7 +18,7 @@ export type NewSpool = Omit<Spool, 'id'>;
 // A spool counts as "low" when this many grams or fewer are left.
 export const LOW_STOCK_THRESHOLD_G = 200;
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 // Runs once when the app opens. It creates the tables on first launch and
 // upgrades them in later versions. Raise SCHEMA_VERSION and add a new
@@ -44,6 +45,13 @@ export async function migrateDb(db: SQLiteDatabase) {
     version = 1;
   }
 
+  if (version < 2) {
+    await db.execAsync(
+      'ALTER TABLE spools ADD COLUMN empty_spool_weight_g REAL NOT NULL DEFAULT 0'
+    );
+    version = 2;
+  }
+
   await db.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
 }
 
@@ -54,6 +62,7 @@ type SpoolRow = {
   color: string;
   total_weight_g: number;
   remaining_weight_g: number;
+  empty_spool_weight_g: number;
   price_paid: number;
   purchased_at: string;
 };
@@ -66,6 +75,7 @@ function fromRow(r: SpoolRow): Spool {
     color: r.color,
     totalWeightG: r.total_weight_g,
     remainingWeightG: r.remaining_weight_g,
+    emptySpoolWeightG: r.empty_spool_weight_g,
     pricePaid: r.price_paid,
     purchasedAt: r.purchased_at,
   };
@@ -81,15 +91,35 @@ export async function listSpools(db: SQLiteDatabase): Promise<Spool[]> {
 export async function addSpool(db: SQLiteDatabase, s: NewSpool) {
   await db.runAsync(
     `INSERT INTO spools
-       (brand, material, color, total_weight_g, remaining_weight_g, price_paid, purchased_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+       (brand, material, color, total_weight_g, remaining_weight_g, empty_spool_weight_g,
+        price_paid, purchased_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     s.brand,
     s.material,
     s.color,
     s.totalWeightG,
     s.remainingWeightG,
+    s.emptySpoolWeightG,
     s.pricePaid,
     s.purchasedAt
+  );
+}
+
+export async function updateSpool(db: SQLiteDatabase, id: number, s: NewSpool) {
+  await db.runAsync(
+    `UPDATE spools SET
+       brand = ?, material = ?, color = ?, total_weight_g = ?, remaining_weight_g = ?,
+       empty_spool_weight_g = ?, price_paid = ?, purchased_at = ?
+     WHERE id = ?`,
+    s.brand,
+    s.material,
+    s.color,
+    s.totalWeightG,
+    s.remainingWeightG,
+    s.emptySpoolWeightG,
+    s.pricePaid,
+    s.purchasedAt,
+    id
   );
 }
 
