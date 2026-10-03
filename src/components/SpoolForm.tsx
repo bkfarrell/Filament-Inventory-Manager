@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Button, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import type { NewSpool, Product, Spool } from '../db';
+import { todayIso, type NewSpool, type Product, type Spool } from '../db';
 
 type Props = {
   spool?: Spool; // when given, the form edits this spool; otherwise it adds a new one
@@ -10,12 +10,21 @@ type Props = {
   onSave: (spool: NewSpool) => void;
   onCancel: () => void;
   onDelete?: () => void;
+  onFinish?: () => void; // "mark as used up"
 };
 
 // Turns a stored number into text for an input box, without long decimals.
 const toText = (n: number) => String(Math.round(n * 100) / 100);
 
-export default function SpoolForm({ spool, barcode, product, onSave, onCancel, onDelete }: Props) {
+export default function SpoolForm({
+  spool,
+  barcode,
+  product,
+  onSave,
+  onCancel,
+  onDelete,
+  onFinish,
+}: Props) {
   const editing = spool !== undefined;
   // Start from the spool being edited, else the remembered product, else blanks.
   const start = spool ?? product;
@@ -25,6 +34,7 @@ export default function SpoolForm({ spool, barcode, product, onSave, onCancel, o
   const [color, setColor] = useState(start?.color ?? '');
   const [weight, setWeight] = useState(toText(start?.totalWeightG ?? 1000));
   const [price, setPrice] = useState(startPrice !== undefined ? toText(startPrice) : '');
+  const [purchasedAt, setPurchasedAt] = useState(spool?.purchasedAt ?? todayIso());
   const [emptySpool, setEmptySpool] = useState(toText(start?.emptySpoolWeightG ?? 0));
   const [remaining, setRemaining] = useState(
     toText(spool?.remainingWeightG ?? start?.totalWeightG ?? 1000)
@@ -83,6 +93,10 @@ export default function SpoolForm({ spool, barcode, product, onSave, onCancel, o
       setError('Filament left must be a number (0 or more).');
       return;
     }
+    if (!isValidDate(purchasedAt.trim())) {
+      setError('Purchase date must look like 2026-10-03 (year-month-day).');
+      return;
+    }
     if (!(emptySpoolWeightG >= 0) || !(pricePaid >= 0)) {
       setError('Empty spool weight and price must be numbers.');
       return;
@@ -95,7 +109,7 @@ export default function SpoolForm({ spool, barcode, product, onSave, onCancel, o
       remainingWeightG,
       emptySpoolWeightG,
       pricePaid,
-      purchasedAt: spool?.purchasedAt ?? new Date().toISOString().slice(0, 10),
+      purchasedAt: purchasedAt.trim(),
       barcode: spool?.barcode ?? barcode ?? null,
     });
   }
@@ -111,10 +125,27 @@ export default function SpoolForm({ spool, barcode, product, onSave, onCancel, o
         </Text>
       ) : null}
       <Field label="Brand" value={brand} onChangeText={setBrand} placeholder="e.g. Prusament" />
-      <Field label="Material" value={material} onChangeText={setMaterial} placeholder="PLA, PETG…" />
+      <Field
+        label="Material"
+        value={material}
+        onChangeText={setMaterial}
+        placeholder="PLA, PETG…"
+      />
       <Field label="Color" value={color} onChangeText={setColor} placeholder="e.g. Galaxy Black" />
-      <Field label="Filament weight when new (g)" value={weight} onChangeText={changeWeight} numeric />
+      <Field
+        label="Filament weight when new (g)"
+        value={weight}
+        onChangeText={changeWeight}
+        numeric
+      />
       <Field label="Price paid" value={price} onChangeText={setPrice} placeholder="0.00" numeric />
+      <Field
+        label="Purchase date"
+        hint="Year-month-day, e.g. 2026-10-03. Change it to log older purchases."
+        value={purchasedAt}
+        onChangeText={setPurchasedAt}
+        placeholder="YYYY-MM-DD"
+      />
       <Field
         label="Empty spool weight (g)"
         hint="Weight of the empty reel. Check the brand's website or weigh an empty one. Usually 150–250 g."
@@ -137,18 +168,21 @@ export default function SpoolForm({ spool, barcode, product, onSave, onCancel, o
           Tip: enter the empty spool weight above, or the reel will be counted as filament.
         </Text>
       ) : null}
-      <Field
-        label="Filament left (g)"
-        value={remaining}
-        onChangeText={changeRemaining}
-        numeric
-      />
+      <Field label="Filament left (g)" value={remaining} onChangeText={changeRemaining} numeric />
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <View style={styles.buttons}>
         <Button title="Cancel" onPress={onCancel} color="#666" />
         <Button title="Save" onPress={save} />
       </View>
+      {onFinish ? (
+        <View style={styles.delete}>
+          <Button title="Mark as used up" onPress={onFinish} color="#b9770e" />
+          <Text style={styles.hint}>
+            Removes it from your inventory but keeps it in purchase history and reports.
+          </Text>
+        </View>
+      ) : null}
       {onDelete ? (
         <View style={styles.delete}>
           <Button title="Delete spool" onPress={onDelete} color="#c0392b" />
@@ -156,6 +190,14 @@ export default function SpoolForm({ spool, barcode, product, onSave, onCancel, o
       ) : null}
     </ScrollView>
   );
+}
+
+// True for a real calendar date written as YYYY-MM-DD.
+function isValidDate(text: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return false;
+  const [y, m, d] = text.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  return date.getFullYear() === y && date.getMonth() === m - 1 && date.getDate() === d;
 }
 
 function Field(props: {
@@ -201,6 +243,10 @@ const styles = StyleSheet.create({
   noticeKnown: { backgroundColor: '#e8f6ee', color: '#1e7a46' },
   noticeNew: { backgroundColor: '#eaf1fd', color: '#1f4fa8' },
   error: { color: '#c0392b' },
-  buttons: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 },
+  buttons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
   delete: { marginTop: 16 },
 });

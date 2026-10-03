@@ -18,7 +18,13 @@ phone** in a small SQLite database, so there are no servers or accounts to set u
 - Spools at or under 200 g are flagged **LOW** (threshold is `LOW_STOCK_THRESHOLD_G` in `src/db.ts`)
 - A phone notification pops up the moment a spool drops into the LOW range (the app asks for
   notification permission the first time it opens)
-- Running total of money spent and cost per kg for each spool
+- Cost per kg for each spool, and what the filament you have left is worth
+- **Reports tab:** spending this month, this year and all time; a 12-month spending chart
+  (tap a month for its total); spending broken down by material and by brand, with average
+  price per kg; and a full purchase history. Switch between this year and all time.
+- **Mark as used up** (in a spool's edit screen) when a spool runs out. It leaves your
+  inventory but stays in purchase history and reports. Use Delete only for mistakes.
+- Set the purchase date on any spool, so you can add older purchases
 - Tap a spool to edit it: fix any detail or set exactly how much filament is left
 - **Weigh a spool on a kitchen scale.** Enter the empty reel's weight once, then type the scale
   reading and the app works out the filament left
@@ -67,6 +73,8 @@ right away.** That's the main loop you'll use while building.
 | `App.tsx` | The main screen: the list of spools, the summary, and the "Add spool" button |
 | `src/db.ts` | The database: spools, remembered barcodes ("products"), and functions to read and change them |
 | `src/components/BarcodeScanner.tsx` | The camera screen that reads a box's barcode |
+| `src/components/ReportsScreen.tsx` | The Reports tab: totals, monthly chart, breakdowns, purchase history |
+| `src/reports.ts` | The math behind the reports (totals by month, brand, material) |
 | `src/notifications.ts` | Asks for notification permission and sends the "running low" alert |
 | `src/components/SpoolCard.tsx` | How a single spool looks in the list |
 | `src/components/SpoolForm.tsx` | The form for adding and editing a spool, including the scale calculator |
@@ -92,7 +100,7 @@ These are in rough order from easiest to hardest:
 2. ~~**Edit spools and set the exact weight.**~~ Done.
 3. **QR labels.** Generate a QR code per spool to print and stick on it, then scan it with the
    phone camera (`expo-camera`) to open that spool. Works in Expo Go.
-4. **Purchase history and cost reports.** Spending by month, by brand, and by material.
+4. ~~**Purchase history and cost reports.**~~ Done.
 5. **NFC tags.** Tap the phone on a spool's NFC sticker. NFC needs a **development build**,
    because Expo Go doesn't include NFC (see below).
 6. **Printer integration.** Pull usage automatically from OctoPrint, Klipper/Moonraker, or Bambu

@@ -12,9 +12,11 @@ export type Spool = {
   pricePaid: number; // what you paid for the spool
   purchasedAt: string; // ISO date, e.g. 2026-10-03
   barcode: string | null; // barcode from the box, if it was added by scanning
+  finishedAt: string | null; // date it was marked "used up"; kept for purchase history
 };
 
-export type NewSpool = Omit<Spool, 'id'>;
+// The fields you fill in on the add/edit form.
+export type NewSpool = Omit<Spool, 'id' | 'finishedAt'>;
 
 // A product is a kind of filament you've scanned before, remembered by its barcode,
 // so the next box with the same barcode fills in the form for you.
@@ -31,7 +33,7 @@ export type Product = {
 // A spool counts as "low" when this many grams or fewer are left.
 export const LOW_STOCK_THRESHOLD_G = 200;
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 // Runs once when the app opens. It creates the tables on first launch and
 // upgrades them in later versions. Raise SCHEMA_VERSION and add a new
@@ -81,6 +83,11 @@ export async function migrateDb(db: SQLiteDatabase) {
     version = 3;
   }
 
+  if (version < 4) {
+    await db.execAsync('ALTER TABLE spools ADD COLUMN finished_at TEXT');
+    version = 4;
+  }
+
   await db.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
 }
 
@@ -95,6 +102,7 @@ type SpoolRow = {
   price_paid: number;
   purchased_at: string;
   barcode: string | null;
+  finished_at: string | null;
 };
 
 function fromRow(r: SpoolRow): Spool {
@@ -109,14 +117,40 @@ function fromRow(r: SpoolRow): Spool {
     pricePaid: r.price_paid,
     purchasedAt: r.purchased_at,
     barcode: r.barcode,
+    finishedAt: r.finished_at,
   };
 }
 
+// Spools you still have (not marked as used up), emptiest first.
 export async function listSpools(db: SQLiteDatabase): Promise<Spool[]> {
   const rows = await db.getAllAsync<SpoolRow>(
-    'SELECT * FROM spools ORDER BY remaining_weight_g ASC'
+    'SELECT * FROM spools WHERE finished_at IS NULL ORDER BY remaining_weight_g ASC'
   );
   return rows.map(fromRow);
+}
+
+// Every spool ever bought, including used-up ones, newest purchase first.
+export async function listAllSpools(db: SQLiteDatabase): Promise<Spool[]> {
+  const rows = await db.getAllAsync<SpoolRow>(
+    'SELECT * FROM spools ORDER BY purchased_at DESC, id DESC'
+  );
+  return rows.map(fromRow);
+}
+
+// Hides a spool from the inventory but keeps it for purchase history and reports.
+export async function markFinished(db: SQLiteDatabase, id: number) {
+  await db.runAsync(
+    'UPDATE spools SET finished_at = ?, remaining_weight_g = 0 WHERE id = ?',
+    todayIso(),
+    id
+  );
+}
+
+// Today's date as YYYY-MM-DD in the phone's local time zone.
+export function todayIso() {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 export async function addSpool(db: SQLiteDatabase, s: NewSpool) {
@@ -196,10 +230,7 @@ type ProductRow = {
 };
 
 export async function findProduct(db: SQLiteDatabase, barcode: string): Promise<Product | null> {
-  const r = await db.getFirstAsync<ProductRow>(
-    'SELECT * FROM products WHERE barcode = ?',
-    barcode
-  );
+  const r = await db.getFirstAsync<ProductRow>('SELECT * FROM products WHERE barcode = ?', barcode);
   if (!r) return null;
   return {
     barcode: r.barcode,
