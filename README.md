@@ -1,0 +1,99 @@
+# Filament Inventory Manager
+
+A phone app for tracking 3D printer filament: what spools you own, how much is left on each,
+what you paid, and when you're running low.
+
+Built with [Expo](https://expo.dev) (React Native + TypeScript). Everything is stored **on your
+phone** in a small SQLite database, so there are no servers or accounts to set up.
+
+## What works today
+
+- Add spools (brand, material, color, weight, price paid)
+- See how much is left on each spool, with a progress bar
+- Tap **−10 g / −50 g / −100 g** to log filament used by a print
+- Spools at or under 200 g are flagged **LOW** (threshold is `LOW_STOCK_THRESHOLD_G` in `src/db.ts`)
+- Running total of money spent and cost per kg for each spool
+- Long-press a spool to delete it
+
+---
+
+## One-time setup on your computer
+
+You only do this once.
+
+1. **Install Node.js (LTS version)** from <https://nodejs.org>. This is the engine that runs the
+   development tools. Check it worked by opening a terminal and running `node -v`.
+   (On Windows the terminal is "PowerShell", on Mac it's "Terminal".)
+2. **Install Git** from <https://git-scm.com>. It's how you download this code and save changes.
+3. **Install VS Code** from <https://code.visualstudio.com>. It's a free code editor
+   (optional but recommended).
+4. **Install the Expo Go app on your phone** from the App Store or Google Play.
+
+## Getting the project running
+
+In a terminal:
+
+```bash
+git clone https://github.com/bkfarrell/Filament-Inventory-Manager.git
+cd Filament-Inventory-Manager
+npm install        # downloads the libraries the app uses (takes a minute)
+npx expo start     # starts the development server
+```
+
+A QR code appears in the terminal. Then:
+
+- **iPhone:** open the normal Camera app and point it at the QR code.
+- **Android:** open Expo Go and tap "Scan QR code".
+
+The app opens on your phone. **When you save a file on your computer, the phone updates
+right away.** That's the main loop you'll use while building.
+
+> **Phone won't connect?** Your phone and computer need to be on the same Wi-Fi network. If that
+> still fails (for example on a work or guest network), run `npx expo start --tunnel` instead.
+
+## Where things live
+
+| File | What it does |
+| --- | --- |
+| `App.tsx` | The main screen: the list of spools, the summary, and the "Add spool" button |
+| `src/db.ts` | The database: table layout and functions to add, update, and delete spools |
+| `src/components/SpoolCard.tsx` | How a single spool looks in the list |
+| `src/components/AddSpoolForm.tsx` | The "Add a spool" form |
+| `app.json` | App name, icon, and other settings |
+| `assets/` | App icon and splash images |
+
+## Useful commands
+
+```bash
+npx expo start          # run the app (press "r" in the terminal to reload)
+npx tsc --noEmit        # check the code for type errors
+npx expo install <pkg>  # add a library (use this instead of "npm install" so versions match Expo)
+npx expo-doctor         # diagnose setup problems
+```
+
+---
+
+## Roadmap
+
+These are in rough order from easiest to hardest:
+
+1. **Low-stock notifications.** Show a phone notification when a spool drops below the
+   threshold, using `expo-notifications` (local notifications work in Expo Go).
+2. **Edit spools and set the exact weight.** Weigh a spool on a kitchen scale and enter the
+   real remaining weight.
+3. **QR labels.** Generate a QR code per spool to print and stick on it, then scan it with the
+   phone camera (`expo-camera`) to open that spool. Works in Expo Go.
+4. **Purchase history and cost reports.** Spending by month, by brand, and by material.
+5. **NFC tags.** Tap the phone on a spool's NFC sticker. NFC needs a **development build**,
+   because Expo Go doesn't include NFC (see below).
+6. **Printer integration.** Pull usage automatically from OctoPrint, Klipper/Moonraker, or Bambu
+   Lab. This means talking to the printer over your home network, and it pairs well with the
+   NFC work.
+
+### Expo Go vs. a "development build"
+
+Expo Go is a ready-made app that can run your code, and it's all you need for steps 1–4.
+Features like NFC need native code that Expo Go doesn't include. For those you build your own
+copy of the app with EAS (`npx eas-cli@latest build --profile development`). It's free to start,
+and the build runs in the cloud, so you don't need Xcode or Android Studio. Putting the app on
+an iPhone without Expo Go needs an Apple Developer account ($99/year). Android is free.
