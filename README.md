@@ -8,6 +8,16 @@ phone** in a small SQLite database, so there are no servers or accounts to set u
 
 ## What works today
 
+The app has three tabs:
+
+- **In use:** spools you've opened, with how much is left and quick buttons to log prints
+- **Stock:** sealed spools waiting to be used, grouped by material and then by color, with how
+  many of each color you have and which brands they are. Tap a color to see each spool, and tap
+  **Open** when you load one; it moves to In use
+- **Reports:** spending and purchase history (see below)
+
+New spools start sealed, so they land in Stock until you open them.
+
 - Add spools (brand, material, color, weight, price paid)
 - **Scan the barcode on a filament box.** The first time, you fill in the details and the app
   remembers that barcode. The next box with the same barcode fills the form in for you, so you
@@ -82,6 +92,8 @@ right away.** That's the main loop you'll use while building.
 | `App.tsx` | The main screen: the list of spools, the summary, and the "Add spool" button |
 | `src/db.ts` | The database: spools, remembered barcodes ("products"), and functions to read and change them |
 | `src/components/BarcodeScanner.tsx` | The camera screen that reads a box's barcode |
+| `src/components/StockScreen.tsx` | The Stock tab: sealed spools grouped by material and color |
+| `src/stock.ts` | The grouping and counting behind the Stock tab |
 | `src/components/ReportsScreen.tsx` | The Reports tab: totals, monthly chart, breakdowns, purchase history |
 | `src/reports.ts` | The math behind the reports (totals by month, brand, material) |
 | `src/theme.ts` | All the app's colors for light and dark mode. Change a color here and it updates everywhere |

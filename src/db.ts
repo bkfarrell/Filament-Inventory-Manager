@@ -164,6 +164,11 @@ export async function listAllSpools(db: SQLiteDatabase): Promise<Spool[]> {
   return rows.map(fromRow);
 }
 
+// Marks a sealed spool as opened today, which moves it from Stock to In use.
+export async function openSpool(db: SQLiteDatabase, id: number) {
+  await db.runAsync('UPDATE spools SET opened_at = ? WHERE id = ?', todayIso(), id);
+}
+
 // Hides a spool from the inventory but keeps it for purchase history and reports.
 export async function markFinished(db: SQLiteDatabase, id: number) {
   await db.runAsync(
