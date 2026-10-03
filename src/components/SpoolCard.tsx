@@ -5,15 +5,17 @@ import { costPerGram, isLowStock, type Spool } from '../db';
 type Props = {
   spool: Spool;
   onUse: (grams: number) => void;
+  onEdit: () => void;
   onDelete: () => void;
 };
 
-export default function SpoolCard({ spool, onUse, onDelete }: Props) {
+export default function SpoolCard({ spool, onUse, onEdit, onDelete }: Props) {
   const low = isLowStock(spool);
-  const pct = spool.totalWeightG > 0 ? spool.remainingWeightG / spool.totalWeightG : 0;
+  const pct =
+    spool.totalWeightG > 0 ? Math.min(1, spool.remainingWeightG / spool.totalWeightG) : 0;
 
   return (
-    <Pressable onLongPress={onDelete} style={[styles.card, low && styles.cardLow]}>
+    <Pressable onPress={onEdit} onLongPress={onDelete} style={[styles.card, low && styles.cardLow]}>
       <View style={styles.header}>
         <Text style={styles.name}>
           {spool.brand} {spool.material}
