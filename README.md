@@ -12,6 +12,8 @@ phone** in a small SQLite database, so there are no servers or accounts to set u
 - See how much is left on each spool, with a progress bar
 - Tap **−10 g / −50 g / −100 g** to log filament used by a print
 - Spools at or under 200 g are flagged **LOW** (threshold is `LOW_STOCK_THRESHOLD_G` in `src/db.ts`)
+- A phone notification pops up the moment a spool drops into the LOW range (the app asks for
+  notification permission the first time it opens)
 - Running total of money spent and cost per kg for each spool
 - Long-press a spool to delete it
 
@@ -57,6 +59,7 @@ right away.** That's the main loop you'll use while building.
 | --- | --- |
 | `App.tsx` | The main screen: the list of spools, the summary, and the "Add spool" button |
 | `src/db.ts` | The database: table layout and functions to add, update, and delete spools |
+| `src/notifications.ts` | Asks for notification permission and sends the "running low" alert |
 | `src/components/SpoolCard.tsx` | How a single spool looks in the list |
 | `src/components/AddSpoolForm.tsx` | The "Add a spool" form |
 | `app.json` | App name, icon, and other settings |
@@ -77,8 +80,7 @@ npx expo-doctor         # diagnose setup problems
 
 These are in rough order from easiest to hardest:
 
-1. **Low-stock notifications.** Show a phone notification when a spool drops below the
-   threshold, using `expo-notifications` (local notifications work in Expo Go).
+1. ~~**Low-stock notifications.**~~ Done.
 2. **Edit spools and set the exact weight.** Weigh a spool on a kitchen scale and enter the
    real remaining weight.
 3. **QR labels.** Generate a QR code per spool to print and stick on it, then scan it with the

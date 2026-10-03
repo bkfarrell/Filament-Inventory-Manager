@@ -16,6 +16,7 @@ import {
   type NewSpool,
   type Spool,
 } from './src/db';
+import { justWentLow, notifyLowStock, setupNotifications } from './src/notifications';
 
 export default function App() {
   return (
@@ -42,6 +43,11 @@ function InventoryScreen() {
     refresh();
   }, [refresh]);
 
+  useEffect(() => {
+    // Ask for notification permission once, when the app first opens.
+    setupNotifications().catch((e) => console.warn('Notifications unavailable', e));
+  }, []);
+
   async function handleSave(spool: NewSpool) {
     await addSpool(db, spool);
     setAdding(false);
@@ -50,7 +56,13 @@ function InventoryScreen() {
 
   async function handleUse(spool: Spool, grams: number) {
     await recordUsage(db, spool.id, grams);
-    await refresh();
+    const updated = await listSpools(db);
+    setSpools(updated);
+
+    const after = updated.find((s) => s.id === spool.id);
+    if (after && justWentLow(spool, after)) {
+      await notifyLowStock(after);
+    }
   }
 
   function handleDelete(spool: Spool) {
