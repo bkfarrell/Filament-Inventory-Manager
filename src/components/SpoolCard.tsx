@@ -33,6 +33,12 @@ export default function SpoolCard({ spool, onUse, onEdit, onDelete }: Props) {
         {Math.round(spool.remainingWeightG)} g of {Math.round(spool.totalWeightG)} g left ·{' '}
         {spool.pricePaid.toFixed(2)} paid · {(costPerGram(spool) * 1000).toFixed(2)}/kg
       </Text>
+      <Text style={styles.meta}>{openedLabel(spool.openedAt)}</Text>
+      {spool.notes ? (
+        <Text style={styles.notes} numberOfLines={2}>
+          {spool.notes}
+        </Text>
+      ) : null}
 
       <View style={styles.actions}>
         {[10, 50, 100].map((g) => (
@@ -43,6 +49,21 @@ export default function SpoolCard({ spool, onUse, onEdit, onDelete }: Props) {
       </View>
     </Pressable>
   );
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+// "Sealed", or e.g. "Opened Oct 3 · 12 days ago".
+function openedLabel(openedAt: string | null) {
+  if (!openedAt) return 'Sealed';
+  const [y, m, d] = openedAt.split('-').map(Number);
+  const opened = new Date(y, m - 1, d);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const days = Math.round((today.getTime() - opened.getTime()) / 86_400_000);
+  const when = days <= 0 ? 'today' : days === 1 ? '1 day ago' : `${days} days ago`;
+  const year = y === now.getFullYear() ? '' : ` ${y}`;
+  return `Opened ${MONTHS[m - 1]} ${d}${year} · ${when}`;
 }
 
 const useStyles = themedStyles((c) => ({
@@ -72,6 +93,7 @@ const useStyles = themedStyles((c) => ({
   barFill: { height: 8, backgroundColor: c.good },
   barLow: { backgroundColor: c.warning },
   meta: { fontSize: 13, color: c.textMuted },
+  notes: { fontSize: 14, color: c.textSecondary, fontStyle: 'italic' },
   actions: { flexDirection: 'row', gap: 8, marginTop: 4 },
   useButton: {
     backgroundColor: c.track,

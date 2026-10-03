@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, ScrollView, Text, TextInput, View } from 'react-native';
+import { Button, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { todayIso, type NewSpool, type Product, type Spool } from '../db';
 import { themedStyles, useTheme } from '../theme';
@@ -38,6 +38,8 @@ export default function SpoolForm({
   const [weight, setWeight] = useState(toText(start?.totalWeightG ?? 1000));
   const [price, setPrice] = useState(startPrice !== undefined ? toText(startPrice) : '');
   const [purchasedAt, setPurchasedAt] = useState(spool?.purchasedAt ?? todayIso());
+  const [openedAt, setOpenedAt] = useState(spool?.openedAt ?? ''); // blank = still sealed
+  const [notes, setNotes] = useState(spool?.notes ?? '');
   const [emptySpool, setEmptySpool] = useState(toText(start?.emptySpoolWeightG ?? 0));
   const [remaining, setRemaining] = useState(
     toText(spool?.remainingWeightG ?? start?.totalWeightG ?? 1000)
@@ -100,6 +102,15 @@ export default function SpoolForm({
       setError('Purchase date must look like 2026-10-03 (year-month-day).');
       return;
     }
+    const opened = openedAt.trim();
+    if (opened && !isValidDate(opened)) {
+      setError('Opened date must look like 2026-10-03, or be left blank if still sealed.');
+      return;
+    }
+    if (opened && opened < purchasedAt.trim()) {
+      setError("Opened date can't be before the purchase date.");
+      return;
+    }
     if (!(emptySpoolWeightG >= 0) || !(pricePaid >= 0)) {
       setError('Empty spool weight and price must be numbers.');
       return;
@@ -114,6 +125,8 @@ export default function SpoolForm({
       pricePaid,
       purchasedAt: purchasedAt.trim(),
       barcode: spool?.barcode ?? barcode ?? null,
+      openedAt: opened || null,
+      notes: notes.trim(),
     });
   }
 
@@ -150,6 +163,21 @@ export default function SpoolForm({
         placeholder="YYYY-MM-DD"
       />
       <Field
+        label="Opened date"
+        hint="When you took it out of the sealed bag. Leave blank if it's still sealed. Filled in automatically the first time you log a print."
+        value={openedAt}
+        onChangeText={setOpenedAt}
+        placeholder="Still sealed"
+      />
+      <View style={styles.quickRow}>
+        <Pressable style={styles.quickButton} onPress={() => setOpenedAt(todayIso())}>
+          <Text style={styles.quickText}>Opened today</Text>
+        </Pressable>
+        <Pressable style={styles.quickButton} onPress={() => setOpenedAt('')}>
+          <Text style={styles.quickText}>Still sealed</Text>
+        </Pressable>
+      </View>
+      <Field
         label="Empty spool weight (g)"
         hint="Weight of the empty reel. Check the brand's website or weigh an empty one. Usually 150–250 g."
         value={emptySpool}
@@ -172,6 +200,14 @@ export default function SpoolForm({
         </Text>
       ) : null}
       <Field label="Filament left (g)" value={remaining} onChangeText={changeRemaining} numeric />
+
+      <Field
+        label="Notes"
+        value={notes}
+        onChangeText={setNotes}
+        placeholder="e.g. Prints best at 215°C, strings above 225°C"
+        multiline
+      />
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <View style={styles.buttons}>
@@ -210,6 +246,7 @@ function Field(props: {
   placeholder?: string;
   hint?: string;
   numeric?: boolean;
+  multiline?: boolean;
 }) {
   const styles = useStyles();
   const { colors, dark } = useTheme();
@@ -217,13 +254,15 @@ function Field(props: {
     <View style={styles.field}>
       <Text style={styles.label}>{props.label}</Text>
       <TextInput
-        style={styles.input}
+        style={[styles.input, props.multiline && styles.inputMultiline]}
         value={props.value}
         onChangeText={props.onChangeText}
         placeholder={props.placeholder}
         placeholderTextColor={colors.placeholder}
         keyboardType={props.numeric ? 'decimal-pad' : 'default'}
         keyboardAppearance={dark ? 'dark' : 'light'}
+        multiline={props.multiline}
+        textAlignVertical={props.multiline ? 'top' : 'center'}
       />
       {props.hint ? <Text style={styles.hint}>{props.hint}</Text> : null}
     </View>
@@ -247,6 +286,15 @@ const useStyles = themedStyles((c) => ({
     paddingVertical: 10,
     fontSize: 16,
   },
+  inputMultiline: { minHeight: 90 },
+  quickRow: { flexDirection: 'row', gap: 8, marginTop: -4 },
+  quickButton: {
+    backgroundColor: c.track,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  quickText: { fontSize: 14, color: c.text },
   warning: { color: c.warningText, fontSize: 13 },
   notice: { fontSize: 14, padding: 12, borderRadius: 8, overflow: 'hidden' },
   noticeKnown: { backgroundColor: c.noticeKnownBg, color: c.noticeKnownText },

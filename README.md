@@ -25,6 +25,10 @@ phone** in a small SQLite database, so there are no servers or accounts to set u
 - **Mark as used up** (in a spool's edit screen) when a spool runs out. It leaves your
   inventory but stays in purchase history and reports. Use Delete only for mistakes.
 - Set the purchase date on any spool, so you can add older purchases
+- **Opened date:** record when a spool came out of its sealed bag (handy for knowing when it
+  might need drying). It's filled in automatically the first time you log a print, and each
+  card shows "Sealed" or how many days ago it was opened
+- **Notes** on each spool, e.g. best print temperature or quirks, shown on its card
 - **Dark mode:** follows your phone's light/dark setting automatically, and switches live
   when you change it
 - Tap a spool to edit it: fix any detail or set exactly how much filament is left
