@@ -25,6 +25,8 @@ phone** in a small SQLite database, so there are no servers or accounts to set u
 - **Mark as used up** (in a spool's edit screen) when a spool runs out. It leaves your
   inventory but stays in purchase history and reports. Use Delete only for mistakes.
 - Set the purchase date on any spool, so you can add older purchases
+- **Dark mode:** follows your phone's light/dark setting automatically, and switches live
+  when you change it
 - Tap a spool to edit it: fix any detail or set exactly how much filament is left
 - **Weigh a spool on a kitchen scale.** Enter the empty reel's weight once, then type the scale
   reading and the app works out the filament left
@@ -75,6 +77,7 @@ right away.** That's the main loop you'll use while building.
 | `src/components/BarcodeScanner.tsx` | The camera screen that reads a box's barcode |
 | `src/components/ReportsScreen.tsx` | The Reports tab: totals, monthly chart, breakdowns, purchase history |
 | `src/reports.ts` | The math behind the reports (totals by month, brand, material) |
+| `src/theme.ts` | All the app's colors for light and dark mode. Change a color here and it updates everywhere |
 | `src/notifications.ts` | Asks for notification permission and sends the "running low" alert |
 | `src/components/SpoolCard.tsx` | How a single spool looks in the list |
 | `src/components/SpoolForm.tsx` | The form for adding and editing a spool, including the scale calculator |

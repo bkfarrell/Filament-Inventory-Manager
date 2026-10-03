@@ -1,6 +1,7 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 import { costPerGram, isLowStock, type Spool } from '../db';
+import { themedStyles } from '../theme';
 
 type Props = {
   spool: Spool;
@@ -10,6 +11,7 @@ type Props = {
 };
 
 export default function SpoolCard({ spool, onUse, onEdit, onDelete }: Props) {
+  const styles = useStyles();
   const low = isLowStock(spool);
   const pct =
     spool.totalWeightG > 0 ? Math.min(1, spool.remainingWeightG / spool.totalWeightG) : 0;
@@ -43,22 +45,22 @@ export default function SpoolCard({ spool, onUse, onEdit, onDelete }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = themedStyles((c) => ({
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: c.surface,
     borderRadius: 12,
     padding: 16,
     gap: 6,
     borderWidth: 1,
-    borderColor: '#e5e5e5',
+    borderColor: c.border,
   },
-  cardLow: { borderColor: '#e67e22' },
+  cardLow: { borderColor: c.warning },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  name: { fontSize: 17, fontWeight: '600' },
-  color: { fontSize: 15, color: '#555' },
+  name: { fontSize: 17, fontWeight: '600', color: c.text },
+  color: { fontSize: 15, color: c.textSecondary },
   lowBadge: {
-    color: '#fff',
-    backgroundColor: '#e67e22',
+    color: c.onAccent,
+    backgroundColor: c.warning,
     fontSize: 12,
     fontWeight: '700',
     paddingHorizontal: 8,
@@ -66,16 +68,16 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     overflow: 'hidden',
   },
-  barTrack: { height: 8, backgroundColor: '#eee', borderRadius: 4, overflow: 'hidden' },
-  barFill: { height: 8, backgroundColor: '#27ae60' },
-  barLow: { backgroundColor: '#e67e22' },
-  meta: { fontSize: 13, color: '#666' },
+  barTrack: { height: 8, backgroundColor: c.track, borderRadius: 4, overflow: 'hidden' },
+  barFill: { height: 8, backgroundColor: c.good },
+  barLow: { backgroundColor: c.warning },
+  meta: { fontSize: 13, color: c.textMuted },
   actions: { flexDirection: 'row', gap: 8, marginTop: 4 },
   useButton: {
-    backgroundColor: '#f0f0f0',
+    backgroundColor: c.track,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 6,
   },
-  useText: { fontSize: 14 },
-});
+  useText: { fontSize: 14, color: c.text },
+}));

@@ -1,7 +1,8 @@
 import { StatusBar } from 'expo-status-bar';
+import * as SystemUI from 'expo-system-ui';
 import { SQLiteProvider, useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, FlatList, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, FlatList, Modal, Pressable, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import BarcodeScanner from './src/components/BarcodeScanner';
@@ -27,6 +28,7 @@ import {
   type Spool,
 } from './src/db';
 import { justWentLow, notifyLowStock, setupNotifications } from './src/notifications';
+import { themedStyles, useTheme } from './src/theme';
 
 // What's open on top of the list right now.
 type Screen =
@@ -36,18 +38,27 @@ type Screen =
   | { kind: 'edit'; spool: Spool };
 
 export default function App() {
+  const { colors } = useTheme();
+
+  useEffect(() => {
+    // Colors the area behind the app (seen during screen transitions) to match the theme.
+    SystemUI.setBackgroundColorAsync(colors.background);
+  }, [colors]);
+
   return (
     <SafeAreaProvider>
       {/* Opens (or creates) filament.db on the phone and sets up the tables. */}
       <SQLiteProvider databaseName="filament.db" onInit={migrateDb}>
         <InventoryScreen />
       </SQLiteProvider>
-      <StatusBar style="dark" />
+      {/* "auto" makes the clock and battery icons dark in light mode and light in dark mode. */}
+      <StatusBar style="auto" />
     </SafeAreaProvider>
   );
 }
 
 function InventoryScreen() {
+  const styles = useStyles();
   const db = useSQLiteContext();
   const [spools, setSpools] = useState<Spool[]>([]); // spools you still have
   const [allSpools, setAllSpools] = useState<Spool[]>([]); // every purchase, for reports
@@ -209,7 +220,7 @@ function InventoryScreen() {
         {screen?.kind === 'scan' ? (
           <BarcodeScanner onScanned={handleScanned} onCancel={() => setScreen(null)} />
         ) : screen !== null ? (
-          <SafeAreaView style={{ flex: 1 }}>
+          <SafeAreaView style={styles.modal}>
             <SpoolForm
               // A new key resets the form's fields each time it opens.
               key={screen.kind === 'edit' ? screen.spool.id : `add-${screen.barcode ?? ''}`}
@@ -229,6 +240,7 @@ function InventoryScreen() {
 }
 
 function TabButton(props: { label: string; active: boolean; onPress: () => void }) {
+  const styles = useStyles();
   return (
     <Pressable onPress={props.onPress} style={[styles.tab, props.active && styles.tabActive]}>
       <Text style={[styles.tabText, props.active && styles.tabTextActive]}>{props.label}</Text>
@@ -236,24 +248,25 @@ function TabButton(props: { label: string; active: boolean; onPress: () => void 
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#f6f6f6' },
+const useStyles = themedStyles((c) => ({
+  screen: { flex: 1, backgroundColor: c.background },
+  modal: { flex: 1, backgroundColor: c.background },
   header: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12 },
-  title: { fontSize: 30, fontWeight: '700' },
-  summary: { fontSize: 15, color: '#555', marginTop: 10 },
+  title: { fontSize: 30, fontWeight: '700', color: c.text },
+  summary: { fontSize: 15, color: c.textSecondary, marginTop: 10 },
   tabs: {
     flexDirection: 'row',
-    backgroundColor: '#e8e8e8',
+    backgroundColor: c.segment,
     borderRadius: 10,
     padding: 3,
     marginTop: 8,
   },
   tab: { flex: 1, paddingVertical: 7, borderRadius: 8, alignItems: 'center' },
-  tabActive: { backgroundColor: '#fff' },
-  tabText: { fontSize: 15, color: '#555' },
-  tabTextActive: { color: '#111', fontWeight: '600' },
+  tabActive: { backgroundColor: c.segmentActive },
+  tabText: { fontSize: 15, color: c.textSecondary },
+  tabTextActive: { color: c.text, fontWeight: '600' },
   list: { paddingHorizontal: 16, paddingBottom: 100, gap: 12 },
-  empty: { textAlign: 'center', color: '#888', marginTop: 40, fontSize: 16 },
+  empty: { textAlign: 'center', color: c.textMuted, marginTop: 40, fontSize: 16 },
   buttonRow: {
     position: 'absolute',
     right: 20,
@@ -262,11 +275,11 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   actionButton: {
-    backgroundColor: '#2d6cdf',
+    backgroundColor: c.primary,
     paddingHorizontal: 20,
     paddingVertical: 14,
     borderRadius: 28,
   },
-  scanButton: { backgroundColor: '#1e8a5a' },
-  actionText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-});
+  scanButton: { backgroundColor: c.scan },
+  actionText: { color: c.onAccent, fontSize: 16, fontWeight: '600' },
+}));

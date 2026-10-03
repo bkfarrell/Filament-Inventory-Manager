@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Button, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Button, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { todayIso, type NewSpool, type Product, type Spool } from '../db';
+import { themedStyles, useTheme } from '../theme';
 
 type Props = {
   spool?: Spool; // when given, the form edits this spool; otherwise it adds a new one
@@ -25,6 +26,8 @@ export default function SpoolForm({
   onDelete,
   onFinish,
 }: Props) {
+  const styles = useStyles();
+  const { colors } = useTheme();
   const editing = spool !== undefined;
   // Start from the spool being edited, else the remembered product, else blanks.
   const start = spool ?? product;
@@ -172,12 +175,12 @@ export default function SpoolForm({
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <View style={styles.buttons}>
-        <Button title="Cancel" onPress={onCancel} color="#666" />
-        <Button title="Save" onPress={save} />
+        <Button title="Cancel" onPress={onCancel} color={colors.mutedButton} />
+        <Button title="Save" onPress={save} color={colors.primary} />
       </View>
       {onFinish ? (
         <View style={styles.delete}>
-          <Button title="Mark as used up" onPress={onFinish} color="#b9770e" />
+          <Button title="Mark as used up" onPress={onFinish} color={colors.warningText} />
           <Text style={styles.hint}>
             Removes it from your inventory but keeps it in purchase history and reports.
           </Text>
@@ -185,7 +188,7 @@ export default function SpoolForm({
       ) : null}
       {onDelete ? (
         <View style={styles.delete}>
-          <Button title="Delete spool" onPress={onDelete} color="#c0392b" />
+          <Button title="Delete spool" onPress={onDelete} color={colors.danger} />
         </View>
       ) : null}
     </ScrollView>
@@ -208,6 +211,8 @@ function Field(props: {
   hint?: string;
   numeric?: boolean;
 }) {
+  const styles = useStyles();
+  const { colors, dark } = useTheme();
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{props.label}</Text>
@@ -216,37 +221,41 @@ function Field(props: {
         value={props.value}
         onChangeText={props.onChangeText}
         placeholder={props.placeholder}
+        placeholderTextColor={colors.placeholder}
         keyboardType={props.numeric ? 'decimal-pad' : 'default'}
+        keyboardAppearance={dark ? 'dark' : 'light'}
       />
       {props.hint ? <Text style={styles.hint}>{props.hint}</Text> : null}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  form: { padding: 20, gap: 12, paddingBottom: 60 },
-  title: { fontSize: 22, fontWeight: '600', marginBottom: 4 },
-  section: { fontSize: 17, fontWeight: '600', marginTop: 8 },
+const useStyles = themedStyles((c) => ({
+  form: { padding: 20, gap: 12, paddingBottom: 60, backgroundColor: c.background, flexGrow: 1 },
+  title: { fontSize: 22, fontWeight: '600', marginBottom: 4, color: c.text },
+  section: { fontSize: 17, fontWeight: '600', marginTop: 8, color: c.text },
   field: { gap: 4 },
-  label: { fontSize: 14, color: '#444' },
-  hint: { fontSize: 12, color: '#888' },
+  label: { fontSize: 14, color: c.textSecondary },
+  hint: { fontSize: 12, color: c.textMuted },
   input: {
     borderWidth: 1,
-    borderColor: '#ccc',
+    borderColor: c.inputBorder,
+    backgroundColor: c.surface,
+    color: c.text,
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 16,
   },
-  warning: { color: '#b9770e', fontSize: 13 },
+  warning: { color: c.warningText, fontSize: 13 },
   notice: { fontSize: 14, padding: 12, borderRadius: 8, overflow: 'hidden' },
-  noticeKnown: { backgroundColor: '#e8f6ee', color: '#1e7a46' },
-  noticeNew: { backgroundColor: '#eaf1fd', color: '#1f4fa8' },
-  error: { color: '#c0392b' },
+  noticeKnown: { backgroundColor: c.noticeKnownBg, color: c.noticeKnownText },
+  noticeNew: { backgroundColor: c.noticeNewBg, color: c.noticeNewText },
+  error: { color: c.danger },
   buttons: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginTop: 8,
   },
   delete: { marginTop: 16 },
-});
+}));
