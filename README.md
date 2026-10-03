@@ -8,6 +8,16 @@ phone** in a small SQLite database, so there are no servers or accounts to set u
 
 ## What works today
 
+The app has three tabs:
+
+- **In Use:** spools you've opened, with how much is left and quick buttons to log prints
+- **Stock:** sealed spools waiting to be used, grouped by material and then by color, with how
+  many of each color you have and which brands they are. Tap a color to see each spool, and tap
+  **Open** when you load one; it moves to In Use
+- **Reports:** spending and purchase history (see below)
+
+New spools start sealed, so they land in Stock until you open them.
+
 - Add spools (brand, material, color, weight, price paid)
 - **Scan the barcode on a filament box.** The first time, you fill in the details and the app
   remembers that barcode. The next box with the same barcode fills the form in for you, so you
@@ -25,6 +35,15 @@ phone** in a small SQLite database, so there are no servers or accounts to set u
 - **Mark as used up** (in a spool's edit screen) when a spool runs out. It leaves your
   inventory but stays in purchase history and reports. Use Delete only for mistakes.
 - Set the purchase date on any spool, so you can add older purchases
+- **Opened date:** record when a spool came out of its sealed bag (handy for knowing when it
+  might need drying). It's filled in automatically the first time you log a print, and each
+  card shows "Sealed" or how many days ago it was opened
+- **Notes** on each spool, e.g. best print temperature or quirks, shown on its card
+- **Spool or refill:** mark whether filament came on its own reel or as a refill for a reusable
+  spool. Refills get a tag on their card, scanned barcodes remember the choice, and Reports
+  compares what you spend on refills vs. spools
+- **Dark mode:** follows your phone's light/dark setting automatically, and switches live
+  when you change it
 - Tap a spool to edit it: fix any detail or set exactly how much filament is left
 - **Weigh a spool on a kitchen scale.** Enter the empty reel's weight once, then type the scale
   reading and the app works out the filament left
@@ -73,8 +92,11 @@ right away.** That's the main loop you'll use while building.
 | `App.tsx` | The main screen: the list of spools, the summary, and the "Add spool" button |
 | `src/db.ts` | The database: spools, remembered barcodes ("products"), and functions to read and change them |
 | `src/components/BarcodeScanner.tsx` | The camera screen that reads a box's barcode |
+| `src/components/StockScreen.tsx` | The Stock tab: sealed spools grouped by material and color |
+| `src/stock.ts` | The grouping and counting behind the Stock tab |
 | `src/components/ReportsScreen.tsx` | The Reports tab: totals, monthly chart, breakdowns, purchase history |
 | `src/reports.ts` | The math behind the reports (totals by month, brand, material) |
+| `src/theme.ts` | All the app's colors for light and dark mode. Change a color here and it updates everywhere |
 | `src/notifications.ts` | Asks for notification permission and sends the "running low" alert |
 | `src/components/SpoolCard.tsx` | How a single spool looks in the list |
 | `src/components/SpoolForm.tsx` | The form for adding and editing a spool, including the scale calculator |

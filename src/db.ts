@@ -12,6 +12,9 @@ export type Spool = {
   pricePaid: number; // what you paid for the spool
   purchasedAt: string; // ISO date, e.g. 2026-10-03
   barcode: string | null; // barcode from the box, if it was added by scanning
+  openedAt: string | null; // date the bag was opened; null while still sealed
+  notes: string; // anything worth remembering, e.g. "prints stringy above 215°C"
+  isRefill: boolean; // true for a refill (filament only, loaded onto a reusable spool)
   finishedAt: string | null; // date it was marked "used up"; kept for purchase history
 };
 
@@ -28,12 +31,13 @@ export type Product = {
   totalWeightG: number;
   emptySpoolWeightG: number;
   lastPricePaid: number;
+  isRefill: boolean;
 };
 
 // A spool counts as "low" when this many grams or fewer are left.
 export const LOW_STOCK_THRESHOLD_G = 200;
 
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 6;
 
 // Runs once when the app opens. It creates the tables on first launch and
 // upgrades them in later versions. Raise SCHEMA_VERSION and add a new
@@ -88,6 +92,23 @@ export async function migrateDb(db: SQLiteDatabase) {
     version = 4;
   }
 
+  if (version < 5) {
+    await db.execAsync(`
+      ALTER TABLE spools ADD COLUMN opened_at TEXT;
+      ALTER TABLE spools ADD COLUMN notes TEXT NOT NULL DEFAULT '';
+    `);
+    version = 5;
+  }
+
+  if (version < 6) {
+    // SQLite has no true/false type, so 0 = comes on its own spool, 1 = refill.
+    await db.execAsync(`
+      ALTER TABLE spools ADD COLUMN is_refill INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE products ADD COLUMN is_refill INTEGER NOT NULL DEFAULT 0;
+    `);
+    version = 6;
+  }
+
   await db.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
 }
 
@@ -102,6 +123,9 @@ type SpoolRow = {
   price_paid: number;
   purchased_at: string;
   barcode: string | null;
+  opened_at: string | null;
+  notes: string;
+  is_refill: number;
   finished_at: string | null;
 };
 
@@ -117,6 +141,9 @@ function fromRow(r: SpoolRow): Spool {
     pricePaid: r.price_paid,
     purchasedAt: r.purchased_at,
     barcode: r.barcode,
+    openedAt: r.opened_at,
+    notes: r.notes,
+    isRefill: r.is_refill === 1,
     finishedAt: r.finished_at,
   };
 }
@@ -135,6 +162,11 @@ export async function listAllSpools(db: SQLiteDatabase): Promise<Spool[]> {
     'SELECT * FROM spools ORDER BY purchased_at DESC, id DESC'
   );
   return rows.map(fromRow);
+}
+
+// Marks a sealed spool as opened today, which moves it from Stock to In Use.
+export async function openSpool(db: SQLiteDatabase, id: number) {
+  await db.runAsync('UPDATE spools SET opened_at = ? WHERE id = ?', todayIso(), id);
 }
 
 // Hides a spool from the inventory but keeps it for purchase history and reports.
@@ -157,8 +189,8 @@ export async function addSpool(db: SQLiteDatabase, s: NewSpool) {
   await db.runAsync(
     `INSERT INTO spools
        (brand, material, color, total_weight_g, remaining_weight_g, empty_spool_weight_g,
-        price_paid, purchased_at, barcode)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        price_paid, purchased_at, barcode, opened_at, notes, is_refill)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     s.brand,
     s.material,
     s.color,
@@ -167,7 +199,10 @@ export async function addSpool(db: SQLiteDatabase, s: NewSpool) {
     s.emptySpoolWeightG,
     s.pricePaid,
     s.purchasedAt,
-    s.barcode
+    s.barcode,
+    s.openedAt,
+    s.notes,
+    s.isRefill ? 1 : 0
   );
 }
 
@@ -175,7 +210,8 @@ export async function updateSpool(db: SQLiteDatabase, id: number, s: NewSpool) {
   await db.runAsync(
     `UPDATE spools SET
        brand = ?, material = ?, color = ?, total_weight_g = ?, remaining_weight_g = ?,
-       empty_spool_weight_g = ?, price_paid = ?, purchased_at = ?, barcode = ?
+       empty_spool_weight_g = ?, price_paid = ?, purchased_at = ?, barcode = ?,
+       opened_at = ?, notes = ?, is_refill = ?
      WHERE id = ?`,
     s.brand,
     s.material,
@@ -186,15 +222,23 @@ export async function updateSpool(db: SQLiteDatabase, id: number, s: NewSpool) {
     s.pricePaid,
     s.purchasedAt,
     s.barcode,
+    s.openedAt,
+    s.notes,
+    s.isRefill ? 1 : 0,
     id
   );
 }
 
 // Subtracts filament used by a print. Never goes below zero.
+// Printing from a sealed spool means it's been opened, so that date is filled in too.
 export async function recordUsage(db: SQLiteDatabase, id: number, grams: number) {
   await db.runAsync(
-    'UPDATE spools SET remaining_weight_g = MAX(0, remaining_weight_g - ?) WHERE id = ?',
+    `UPDATE spools SET
+       remaining_weight_g = MAX(0, remaining_weight_g - ?),
+       opened_at = COALESCE(opened_at, ?)
+     WHERE id = ?`,
     grams,
+    todayIso(),
     id
   );
 }
@@ -227,6 +271,7 @@ type ProductRow = {
   total_weight_g: number;
   empty_spool_weight_g: number;
   last_price_paid: number;
+  is_refill: number;
 };
 
 export async function findProduct(db: SQLiteDatabase, barcode: string): Promise<Product | null> {
@@ -240,6 +285,7 @@ export async function findProduct(db: SQLiteDatabase, barcode: string): Promise<
     totalWeightG: r.total_weight_g,
     emptySpoolWeightG: r.empty_spool_weight_g,
     lastPricePaid: r.last_price_paid,
+    isRefill: r.is_refill === 1,
   };
 }
 
@@ -247,21 +293,24 @@ export async function findProduct(db: SQLiteDatabase, barcode: string): Promise<
 export async function rememberProduct(db: SQLiteDatabase, barcode: string, s: NewSpool) {
   await db.runAsync(
     `INSERT INTO products
-       (barcode, brand, material, color, total_weight_g, empty_spool_weight_g, last_price_paid)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
+       (barcode, brand, material, color, total_weight_g, empty_spool_weight_g, last_price_paid,
+        is_refill)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(barcode) DO UPDATE SET
        brand = excluded.brand,
        material = excluded.material,
        color = excluded.color,
        total_weight_g = excluded.total_weight_g,
        empty_spool_weight_g = excluded.empty_spool_weight_g,
-       last_price_paid = excluded.last_price_paid`,
+       last_price_paid = excluded.last_price_paid,
+       is_refill = excluded.is_refill`,
     barcode,
     s.brand,
     s.material,
     s.color,
     s.totalWeightG,
     s.emptySpoolWeightG,
-    s.pricePaid
+    s.pricePaid,
+    s.isRefill ? 1 : 0
   );
 }

@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import type { Spool } from '../db';
 import {
@@ -11,6 +11,7 @@ import {
   sumSpent,
   type GroupTotal,
 } from '../reports';
+import { themedStyles } from '../theme';
 
 type Props = {
   spools: Spool[]; // every spool ever bought, including used-up ones
@@ -18,12 +19,12 @@ type Props = {
 
 type Period = 'year' | 'all';
 
-const BAR_COLOR = '#2a78d6';
 const CHART_HEIGHT = 140;
 
 const money = (n: number) => n.toFixed(2);
 
 export default function ReportsScreen({ spools }: Props) {
+  const styles = useStyles();
   const now = new Date();
   const thisYear = now.getFullYear();
   const [period, setPeriod] = useState<Period>('year');
@@ -37,6 +38,7 @@ export default function ReportsScreen({ spools }: Props) {
   const inPeriod = period === 'year' ? boughtIn(spools, thisYear) : spools;
   const byMaterial = groupTotals(inPeriod, (s) => s.material);
   const byBrand = groupTotals(inPeriod, (s) => s.brand);
+  const byType = groupTotals(inPeriod, (s) => (s.isRefill ? 'Refill' : 'On a spool'));
 
   if (spools.length === 0) {
     return (
@@ -105,6 +107,9 @@ export default function ReportsScreen({ spools }: Props) {
       <Card title="By brand">
         <Breakdown groups={byBrand} />
       </Card>
+      <Card title="Refills vs. spools">
+        <Breakdown groups={byType} />
+      </Card>
 
       <Card title="Purchase history">
         {inPeriod.length === 0 ? (
@@ -115,6 +120,7 @@ export default function ReportsScreen({ spools }: Props) {
             <View style={{ flex: 1 }}>
               <Text style={styles.historyName}>
                 {s.brand} {s.material} · {s.color}
+                {s.isRefill ? ' · refill' : ''}
               </Text>
               <Text style={styles.muted}>
                 {s.purchasedAt}
@@ -130,6 +136,7 @@ export default function ReportsScreen({ spools }: Props) {
 }
 
 function Breakdown({ groups }: { groups: GroupTotal[] }) {
+  const styles = useStyles();
   if (groups.length === 0) return <Text style={styles.muted}>No purchases in this period.</Text>;
   const max = Math.max(...groups.map((g) => g.spent));
   return (
@@ -154,6 +161,7 @@ function Breakdown({ groups }: { groups: GroupTotal[] }) {
 }
 
 function Tile({ label, value }: { label: string; value: string }) {
+  const styles = useStyles();
   return (
     <View style={styles.tile}>
       <Text style={styles.tileLabel}>{label}</Text>
@@ -163,6 +171,7 @@ function Tile({ label, value }: { label: string; value: string }) {
 }
 
 function Card({ title, children }: { title: string; children: ReactNode }) {
+  const styles = useStyles();
   return (
     <View style={styles.card}>
       <Text style={styles.cardTitle}>{title}</Text>
@@ -172,6 +181,7 @@ function Card({ title, children }: { title: string; children: ReactNode }) {
 }
 
 function ToggleButton(props: { label: string; active: boolean; onPress: () => void }) {
+  const styles = useStyles();
   return (
     <Pressable
       onPress={props.onPress}
@@ -184,11 +194,11 @@ function ToggleButton(props: { label: string; active: boolean; onPress: () => vo
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = themedStyles((c) => ({
   content: { paddingHorizontal: 16, paddingBottom: 40, gap: 12 },
   empty: {
     textAlign: 'center',
-    color: '#888',
+    color: c.textMuted,
     marginTop: 40,
     fontSize: 16,
     paddingHorizontal: 24,
@@ -196,73 +206,73 @@ const styles = StyleSheet.create({
   tiles: { flexDirection: 'row', gap: 12 },
   tile: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: c.surface,
     borderRadius: 12,
     padding: 12,
     borderWidth: 1,
-    borderColor: '#e5e5e5',
+    borderColor: c.border,
   },
-  tileLabel: { fontSize: 13, color: '#666' },
-  tileValue: { fontSize: 22, fontWeight: '700', marginTop: 2, color: '#111' },
+  tileLabel: { fontSize: 13, color: c.textMuted },
+  tileValue: { fontSize: 22, fontWeight: '700', marginTop: 2, color: c.text },
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: c.surface,
     borderRadius: 12,
     padding: 16,
     gap: 10,
     borderWidth: 1,
-    borderColor: '#e5e5e5',
+    borderColor: c.border,
   },
-  cardTitle: { fontSize: 17, fontWeight: '600' },
-  readout: { fontSize: 15, color: '#444' },
-  readoutStrong: { fontWeight: '700', color: '#111' },
+  cardTitle: { fontSize: 17, fontWeight: '600', color: c.text },
+  readout: { fontSize: 15, color: c.textSecondary },
+  readoutStrong: { fontWeight: '700', color: c.text },
   chart: { flexDirection: 'row', alignItems: 'flex-end', gap: 2 },
   barSlot: { flex: 1, alignItems: 'stretch' },
   barArea: {
     height: CHART_HEIGHT,
     justifyContent: 'flex-end',
     borderBottomWidth: 1,
-    borderBottomColor: '#ccc',
+    borderBottomColor: c.axis,
     borderRadius: 4,
   },
-  barAreaSelected: { backgroundColor: '#eef4fc' },
+  barAreaSelected: { backgroundColor: c.chartSelected },
   bar: {
-    backgroundColor: BAR_COLOR,
+    backgroundColor: c.chart,
     borderTopLeftRadius: 4,
     borderTopRightRadius: 4,
     marginHorizontal: 2,
   },
-  barLabel: { fontSize: 10, color: '#888', textAlign: 'center', marginTop: 4 },
-  barLabelSelected: { color: '#111', fontWeight: '700' },
-  chartNote: { fontSize: 12, color: '#888' },
+  barLabel: { fontSize: 10, color: c.textMuted, textAlign: 'center', marginTop: 4 },
+  barLabelSelected: { color: c.text, fontWeight: '700' },
+  chartNote: { fontSize: 12, color: c.textMuted },
   toggle: {
     flexDirection: 'row',
-    backgroundColor: '#e8e8e8',
+    backgroundColor: c.segment,
     borderRadius: 10,
     padding: 3,
     alignSelf: 'flex-start',
   },
   toggleButton: { paddingHorizontal: 16, paddingVertical: 6, borderRadius: 8 },
-  toggleButtonActive: { backgroundColor: '#fff' },
-  toggleText: { fontSize: 14, color: '#555' },
-  toggleTextActive: { color: '#111', fontWeight: '600' },
+  toggleButtonActive: { backgroundColor: c.segmentActive },
+  toggleText: { fontSize: 14, color: c.textSecondary },
+  toggleTextActive: { color: c.text, fontWeight: '600' },
   groupHeader: { flexDirection: 'row', justifyContent: 'space-between' },
-  groupName: { fontSize: 15, fontWeight: '600' },
+  groupName: { fontSize: 15, fontWeight: '600', color: c.text },
   hTrack: {
     height: 8,
-    backgroundColor: '#f0f0f0',
+    backgroundColor: c.track,
     borderRadius: 4,
     overflow: 'hidden',
   },
-  hBar: { height: 8, backgroundColor: BAR_COLOR, borderRadius: 4 },
-  amount: { fontSize: 15, fontWeight: '600', color: '#111' },
-  muted: { fontSize: 13, color: '#777' },
+  hBar: { height: 8, backgroundColor: c.chart, borderRadius: 4 },
+  amount: { fontSize: 15, fontWeight: '600', color: c.text },
+  muted: { fontSize: 13, color: c.textMuted },
   historyRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     paddingVertical: 8,
     borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
+    borderTopColor: c.divider,
   },
-  historyName: { fontSize: 15 },
-});
+  historyName: { fontSize: 15, color: c.text },
+}));

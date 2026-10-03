@@ -1,13 +1,15 @@
 import { StatusBar } from 'expo-status-bar';
+import * as SystemUI from 'expo-system-ui';
 import { SQLiteProvider, useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, FlatList, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, FlatList, Modal, Pressable, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import BarcodeScanner from './src/components/BarcodeScanner';
 import ReportsScreen from './src/components/ReportsScreen';
 import SpoolCard from './src/components/SpoolCard';
 import SpoolForm from './src/components/SpoolForm';
+import StockScreen from './src/components/StockScreen';
 import {
   addSpool,
   costPerGram,
@@ -19,6 +21,7 @@ import {
   markFinished,
   migrateDb,
   normalizeBarcode,
+  openSpool,
   recordUsage,
   rememberProduct,
   updateSpool,
@@ -27,6 +30,7 @@ import {
   type Spool,
 } from './src/db';
 import { justWentLow, notifyLowStock, setupNotifications } from './src/notifications';
+import { themedStyles, useTheme } from './src/theme';
 
 // What's open on top of the list right now.
 type Screen =
@@ -36,22 +40,32 @@ type Screen =
   | { kind: 'edit'; spool: Spool };
 
 export default function App() {
+  const { colors } = useTheme();
+
+  useEffect(() => {
+    // Colors the area behind the app (seen during screen transitions) to match the theme.
+    SystemUI.setBackgroundColorAsync(colors.background);
+  }, [colors]);
+
   return (
     <SafeAreaProvider>
       {/* Opens (or creates) filament.db on the phone and sets up the tables. */}
       <SQLiteProvider databaseName="filament.db" onInit={migrateDb}>
         <InventoryScreen />
       </SQLiteProvider>
-      <StatusBar style="dark" />
+      {/* "auto" makes the clock and battery icons dark in light mode and light in dark mode. */}
+      <StatusBar style="auto" />
     </SafeAreaProvider>
   );
 }
 
 function InventoryScreen() {
+  const styles = useStyles();
   const db = useSQLiteContext();
   const [spools, setSpools] = useState<Spool[]>([]); // spools you still have
   const [allSpools, setAllSpools] = useState<Spool[]>([]); // every purchase, for reports
-  const [tab, setTab] = useState<'inventory' | 'reports'>('inventory');
+  // In Use = opened spools, Stock = sealed spools, Reports = spending.
+  const [tab, setTab] = useState<'inUse' | 'stock' | 'reports'>('inUse');
   const [screen, setScreen] = useState<Screen>(null);
 
   const refresh = useCallback(async () => {
@@ -96,10 +110,17 @@ function InventoryScreen() {
       await addSpool(db, values);
       await refresh();
     }
+    // Show the tab the spool now lives in: sealed spools go to Stock, opened ones to In Use.
+    setTab(values.openedAt ? 'inUse' : 'stock');
     // Remember (or update) what this barcode means for the next scan.
     if (values.barcode) {
       await rememberProduct(db, values.barcode, values);
     }
+  }
+
+  async function handleOpen(spool: Spool) {
+    await openSpool(db, spool.id);
+    await refresh();
   }
 
   async function handleUse(spool: Spool, grams: number) {
@@ -144,35 +165,50 @@ function InventoryScreen() {
     );
   }
 
-  // What the filament you still have is worth, based on what you paid per gram.
-  const stockValue = spools.reduce((sum, s) => sum + costPerGram(s) * s.remainingWeightG, 0);
-  const lowCount = spools.filter(isLowStock).length;
+  const inUse = spools.filter((s) => s.openedAt !== null);
+  const sealed = spools.filter((s) => s.openedAt === null);
+  // What filament is worth, based on what you paid per gram.
+  const valueOf = (list: Spool[]) =>
+    list.reduce((sum, s) => sum + costPerGram(s) * s.remainingWeightG, 0);
+  const lowCount = inUse.filter(isLowStock).length;
+  const materialCount = new Set(sealed.map((s) => s.material)).size;
 
   return (
     <SafeAreaView style={styles.screen}>
       <View style={styles.header}>
         <Text style={styles.title}>Filament</Text>
         <View style={styles.tabs}>
-          <TabButton
-            label="Inventory"
-            active={tab === 'inventory'}
-            onPress={() => setTab('inventory')}
-          />
+          <TabButton label="In Use" active={tab === 'inUse'} onPress={() => setTab('inUse')} />
+          <TabButton label="Stock" active={tab === 'stock'} onPress={() => setTab('stock')} />
           <TabButton label="Reports" active={tab === 'reports'} onPress={() => setTab('reports')} />
         </View>
-        {tab === 'inventory' ? (
+        {tab === 'inUse' ? (
           <Text style={styles.summary}>
-            {spools.length} spools on hand · {stockValue.toFixed(2)} worth
+            {inUse.length} in use · {valueOf(inUse).toFixed(2)} worth left
             {lowCount > 0 ? ` · ${lowCount} low` : ''}
+          </Text>
+        ) : null}
+        {tab === 'stock' ? (
+          <Text style={styles.summary}>
+            {sealed.length} sealed · {materialCount}{' '}
+            {materialCount === 1 ? 'material' : 'materials'} · {valueOf(sealed).toFixed(2)} worth
           </Text>
         ) : null}
       </View>
 
       {tab === 'reports' ? <ReportsScreen spools={allSpools} /> : null}
 
-      {tab === 'inventory' ? (
+      {tab === 'stock' ? (
+        <StockScreen
+          spools={sealed}
+          onOpen={handleOpen}
+          onEdit={(spool) => setScreen({ kind: 'edit', spool })}
+        />
+      ) : null}
+
+      {tab === 'inUse' ? (
         <FlatList
-          data={spools}
+          data={inUse}
           keyExtractor={(s) => String(s.id)}
           contentContainerStyle={styles.list}
           renderItem={({ item }) => (
@@ -185,13 +221,15 @@ function InventoryScreen() {
           )}
           ListEmptyComponent={
             <Text style={styles.empty}>
-              No spools yet. Tap “Scan box” or “Add spool” to log your first one.
+              {sealed.length > 0
+                ? 'Nothing in use. Open a spool from the Stock tab when you load it.'
+                : 'No spools yet. Tap “Scan box” or “Add spool” to log your first one.'}
             </Text>
           }
         />
       ) : null}
 
-      {tab === 'inventory' ? (
+      {tab !== 'reports' ? (
         <View style={styles.buttonRow}>
           <Pressable
             style={[styles.actionButton, styles.scanButton]}
@@ -209,7 +247,7 @@ function InventoryScreen() {
         {screen?.kind === 'scan' ? (
           <BarcodeScanner onScanned={handleScanned} onCancel={() => setScreen(null)} />
         ) : screen !== null ? (
-          <SafeAreaView style={{ flex: 1 }}>
+          <SafeAreaView style={styles.modal}>
             <SpoolForm
               // A new key resets the form's fields each time it opens.
               key={screen.kind === 'edit' ? screen.spool.id : `add-${screen.barcode ?? ''}`}
@@ -229,6 +267,7 @@ function InventoryScreen() {
 }
 
 function TabButton(props: { label: string; active: boolean; onPress: () => void }) {
+  const styles = useStyles();
   return (
     <Pressable onPress={props.onPress} style={[styles.tab, props.active && styles.tabActive]}>
       <Text style={[styles.tabText, props.active && styles.tabTextActive]}>{props.label}</Text>
@@ -236,24 +275,31 @@ function TabButton(props: { label: string; active: boolean; onPress: () => void 
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#f6f6f6' },
+const useStyles = themedStyles((c) => ({
+  screen: { flex: 1, backgroundColor: c.background },
+  modal: { flex: 1, backgroundColor: c.background },
   header: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12 },
-  title: { fontSize: 30, fontWeight: '700' },
-  summary: { fontSize: 15, color: '#555', marginTop: 10 },
+  title: { fontSize: 30, fontWeight: '700', color: c.text },
+  summary: { fontSize: 15, color: c.textSecondary, marginTop: 10 },
   tabs: {
     flexDirection: 'row',
-    backgroundColor: '#e8e8e8',
+    backgroundColor: c.segment,
     borderRadius: 10,
     padding: 3,
     marginTop: 8,
   },
   tab: { flex: 1, paddingVertical: 7, borderRadius: 8, alignItems: 'center' },
-  tabActive: { backgroundColor: '#fff' },
-  tabText: { fontSize: 15, color: '#555' },
-  tabTextActive: { color: '#111', fontWeight: '600' },
+  tabActive: { backgroundColor: c.segmentActive },
+  tabText: { fontSize: 15, color: c.textSecondary },
+  tabTextActive: { color: c.text, fontWeight: '600' },
   list: { paddingHorizontal: 16, paddingBottom: 100, gap: 12 },
-  empty: { textAlign: 'center', color: '#888', marginTop: 40, fontSize: 16 },
+  empty: {
+    textAlign: 'center',
+    color: c.textMuted,
+    marginTop: 40,
+    fontSize: 16,
+    paddingHorizontal: 24,
+  },
   buttonRow: {
     position: 'absolute',
     right: 20,
@@ -262,11 +308,11 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   actionButton: {
-    backgroundColor: '#2d6cdf',
+    backgroundColor: c.primary,
     paddingHorizontal: 20,
     paddingVertical: 14,
     borderRadius: 28,
   },
-  scanButton: { backgroundColor: '#1e8a5a' },
-  actionText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-});
+  scanButton: { backgroundColor: c.scan },
+  actionText: { color: c.onAccent, fontSize: 16, fontWeight: '600' },
+}));

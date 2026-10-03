@@ -2,6 +2,8 @@ import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'ex
 import { useRef } from 'react';
 import { Button, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { themedStyles, useTheme } from '../theme';
+
 type Props = {
   onScanned: (barcode: string) => void;
   onCancel: () => void;
@@ -11,6 +13,8 @@ type Props = {
 const BARCODE_TYPES = ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'qr'] as const;
 
 export default function BarcodeScanner({ onScanned, onCancel }: Props) {
+  const styles = useStyles();
+  const { colors } = useTheme();
   const [permission, requestPermission] = useCameraPermissions();
   // The camera reports the same code many times per second; only act on the first.
   const handled = useRef(false);
@@ -30,11 +34,11 @@ export default function BarcodeScanner({ onScanned, onCancel }: Props) {
       <View style={styles.center}>
         <Text style={styles.message}>The app needs camera access to scan barcodes.</Text>
         {permission.canAskAgain ? (
-          <Button title="Allow camera" onPress={requestPermission} />
+          <Button title="Allow camera" onPress={requestPermission} color={colors.primary} />
         ) : (
           <Text style={styles.message}>Turn on camera access for Expo Go in your phone&apos;s Settings.</Text>
         )}
-        <Button title="Cancel" onPress={onCancel} color="#666" />
+        <Button title="Cancel" onPress={onCancel} color={colors.mutedButton} />
       </View>
     );
   }
@@ -58,10 +62,18 @@ export default function BarcodeScanner({ onScanned, onCancel }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+// The camera view is always dark, so only the permission screen follows the theme.
+const useStyles = themedStyles((c) => ({
   container: { flex: 1, backgroundColor: '#000' },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24 },
-  message: { fontSize: 16, textAlign: 'center' },
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+    padding: 24,
+    backgroundColor: c.background,
+  },
+  message: { fontSize: 16, textAlign: 'center', color: c.text },
   overlay: { flex: 1, alignItems: 'center', justifyContent: 'space-between', paddingVertical: 60 },
   instructions: {
     color: '#fff',
@@ -86,4 +98,4 @@ const styles = StyleSheet.create({
     borderRadius: 24,
   },
   cancelText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-});
+}));

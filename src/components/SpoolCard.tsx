@@ -1,6 +1,7 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 import { costPerGram, isLowStock, type Spool } from '../db';
+import { themedStyles } from '../theme';
 
 type Props = {
   spool: Spool;
@@ -10,6 +11,7 @@ type Props = {
 };
 
 export default function SpoolCard({ spool, onUse, onEdit, onDelete }: Props) {
+  const styles = useStyles();
   const low = isLowStock(spool);
   const pct =
     spool.totalWeightG > 0 ? Math.min(1, spool.remainingWeightG / spool.totalWeightG) : 0;
@@ -20,7 +22,10 @@ export default function SpoolCard({ spool, onUse, onEdit, onDelete }: Props) {
         <Text style={styles.name}>
           {spool.brand} {spool.material}
         </Text>
-        {low ? <Text style={styles.lowBadge}>LOW</Text> : null}
+        <View style={styles.badges}>
+          {spool.isRefill ? <Text style={styles.refillBadge}>Refill</Text> : null}
+          {low ? <Text style={styles.lowBadge}>LOW</Text> : null}
+        </View>
       </View>
       <Text style={styles.color}>{spool.color}</Text>
 
@@ -31,6 +36,12 @@ export default function SpoolCard({ spool, onUse, onEdit, onDelete }: Props) {
         {Math.round(spool.remainingWeightG)} g of {Math.round(spool.totalWeightG)} g left ·{' '}
         {spool.pricePaid.toFixed(2)} paid · {(costPerGram(spool) * 1000).toFixed(2)}/kg
       </Text>
+      <Text style={styles.meta}>{openedLabel(spool.openedAt)}</Text>
+      {spool.notes ? (
+        <Text style={styles.notes} numberOfLines={2}>
+          {spool.notes}
+        </Text>
+      ) : null}
 
       <View style={styles.actions}>
         {[10, 50, 100].map((g) => (
@@ -43,22 +54,53 @@ export default function SpoolCard({ spool, onUse, onEdit, onDelete }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+// "Sealed", or e.g. "Opened Oct 3 · 12 days ago".
+function openedLabel(openedAt: string | null) {
+  if (!openedAt) return 'Sealed';
+  const [y, m, d] = openedAt.split('-').map(Number);
+  const opened = new Date(y, m - 1, d);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const days = Math.round((today.getTime() - opened.getTime()) / 86_400_000);
+  const when = days <= 0 ? 'today' : days === 1 ? '1 day ago' : `${days} days ago`;
+  const year = y === now.getFullYear() ? '' : ` ${y}`;
+  return `Opened ${MONTHS[m - 1]} ${d}${year} · ${when}`;
+}
+
+const useStyles = themedStyles((c) => ({
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: c.surface,
     borderRadius: 12,
     padding: 16,
     gap: 6,
     borderWidth: 1,
-    borderColor: '#e5e5e5',
+    borderColor: c.border,
   },
-  cardLow: { borderColor: '#e67e22' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  name: { fontSize: 17, fontWeight: '600' },
-  color: { fontSize: 15, color: '#555' },
+  cardLow: { borderColor: c.warning },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+  },
+  name: { fontSize: 17, fontWeight: '600', color: c.text, flexShrink: 1 },
+  color: { fontSize: 15, color: c.textSecondary },
+  badges: { flexDirection: 'row', gap: 6 },
+  refillBadge: {
+    color: c.textSecondary,
+    backgroundColor: c.track,
+    fontSize: 12,
+    fontWeight: '600',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    overflow: 'hidden',
+  },
   lowBadge: {
-    color: '#fff',
-    backgroundColor: '#e67e22',
+    color: c.onAccent,
+    backgroundColor: c.warning,
     fontSize: 12,
     fontWeight: '700',
     paddingHorizontal: 8,
@@ -66,16 +108,17 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     overflow: 'hidden',
   },
-  barTrack: { height: 8, backgroundColor: '#eee', borderRadius: 4, overflow: 'hidden' },
-  barFill: { height: 8, backgroundColor: '#27ae60' },
-  barLow: { backgroundColor: '#e67e22' },
-  meta: { fontSize: 13, color: '#666' },
+  barTrack: { height: 8, backgroundColor: c.track, borderRadius: 4, overflow: 'hidden' },
+  barFill: { height: 8, backgroundColor: c.good },
+  barLow: { backgroundColor: c.warning },
+  meta: { fontSize: 13, color: c.textMuted },
+  notes: { fontSize: 14, color: c.textSecondary, fontStyle: 'italic' },
   actions: { flexDirection: 'row', gap: 8, marginTop: 4 },
   useButton: {
-    backgroundColor: '#f0f0f0',
+    backgroundColor: c.track,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 6,
   },
-  useText: { fontSize: 14 },
-});
+  useText: { fontSize: 14, color: c.text },
+}));
