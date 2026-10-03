@@ -64,7 +64,7 @@ function InventoryScreen() {
   const db = useSQLiteContext();
   const [spools, setSpools] = useState<Spool[]>([]); // spools you still have
   const [allSpools, setAllSpools] = useState<Spool[]>([]); // every purchase, for reports
-  // In use = opened spools, Stock = sealed spools, Reports = spending.
+  // In Use = opened spools, Stock = sealed spools, Reports = spending.
   const [tab, setTab] = useState<'inUse' | 'stock' | 'reports'>('inUse');
   const [screen, setScreen] = useState<Screen>(null);
 
@@ -110,7 +110,7 @@ function InventoryScreen() {
       await addSpool(db, values);
       await refresh();
     }
-    // Show the tab the spool now lives in: sealed spools go to Stock, opened ones to In use.
+    // Show the tab the spool now lives in: sealed spools go to Stock, opened ones to In Use.
     setTab(values.openedAt ? 'inUse' : 'stock');
     // Remember (or update) what this barcode means for the next scan.
     if (values.barcode) {
@@ -178,7 +178,7 @@ function InventoryScreen() {
       <View style={styles.header}>
         <Text style={styles.title}>Filament</Text>
         <View style={styles.tabs}>
-          <TabButton label="In use" active={tab === 'inUse'} onPress={() => setTab('inUse')} />
+          <TabButton label="In Use" active={tab === 'inUse'} onPress={() => setTab('inUse')} />
           <TabButton label="Stock" active={tab === 'stock'} onPress={() => setTab('stock')} />
           <TabButton label="Reports" active={tab === 'reports'} onPress={() => setTab('reports')} />
         </View>

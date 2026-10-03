@@ -7,7 +7,7 @@ import { themedStyles } from '../theme';
 
 type Props = {
   spools: Spool[]; // sealed spools only
-  onOpen: (spool: Spool) => void; // move a spool to "In use"
+  onOpen: (spool: Spool) => void; // move a spool to "In Use"
   onEdit: (spool: Spool) => void;
 };
 
@@ -59,7 +59,7 @@ export default function StockScreen({ spools, onOpen, onEdit }: Props) {
         </View>
       ))}
       <Text style={styles.footnote}>
-        Tap a color to see each spool. “Open” moves a spool to the In use tab.
+        Tap a color to see each spool. “Open” moves a spool to the In Use tab.
       </Text>
     </ScrollView>
   );

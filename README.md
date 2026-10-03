@@ -10,10 +10,10 @@ phone** in a small SQLite database, so there are no servers or accounts to set u
 
 The app has three tabs:
 
-- **In use:** spools you've opened, with how much is left and quick buttons to log prints
+- **In Use:** spools you've opened, with how much is left and quick buttons to log prints
 - **Stock:** sealed spools waiting to be used, grouped by material and then by color, with how
   many of each color you have and which brands they are. Tap a color to see each spool, and tap
-  **Open** when you load one; it moves to In use
+  **Open** when you load one; it moves to In Use
 - **Reports:** spending and purchase history (see below)
 
 New spools start sealed, so they land in Stock until you open them.
