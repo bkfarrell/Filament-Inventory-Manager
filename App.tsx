@@ -6,6 +6,7 @@ import { Alert, FlatList, Modal, Pressable, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import BarcodeScanner from './src/components/BarcodeScanner';
+import PrinterScreen from './src/components/PrinterScreen';
 import ReportsScreen from './src/components/ReportsScreen';
 import SpoolCard from './src/components/SpoolCard';
 import SpoolForm from './src/components/SpoolForm';
@@ -64,8 +65,8 @@ function InventoryScreen() {
   const db = useSQLiteContext();
   const [spools, setSpools] = useState<Spool[]>([]); // spools you still have
   const [allSpools, setAllSpools] = useState<Spool[]>([]); // every purchase, for reports
-  // In Use = opened spools, Stock = sealed spools, Reports = spending.
-  const [tab, setTab] = useState<'inUse' | 'stock' | 'reports'>('inUse');
+  // In Use = opened spools, Stock = sealed spools, Printer = live AMS, Reports = spending.
+  const [tab, setTab] = useState<'inUse' | 'stock' | 'printer' | 'reports'>('inUse');
   const [screen, setScreen] = useState<Screen>(null);
 
   const refresh = useCallback(async () => {
@@ -180,6 +181,7 @@ function InventoryScreen() {
         <View style={styles.tabs}>
           <TabButton label="In Use" active={tab === 'inUse'} onPress={() => setTab('inUse')} />
           <TabButton label="Stock" active={tab === 'stock'} onPress={() => setTab('stock')} />
+          <TabButton label="Printer" active={tab === 'printer'} onPress={() => setTab('printer')} />
           <TabButton label="Reports" active={tab === 'reports'} onPress={() => setTab('reports')} />
         </View>
         {tab === 'inUse' ? (
@@ -197,6 +199,8 @@ function InventoryScreen() {
       </View>
 
       {tab === 'reports' ? <ReportsScreen spools={allSpools} /> : null}
+
+      {tab === 'printer' ? <PrinterScreen /> : null}
 
       {tab === 'stock' ? (
         <StockScreen
@@ -229,7 +233,7 @@ function InventoryScreen() {
         />
       ) : null}
 
-      {tab !== 'reports' ? (
+      {tab === 'inUse' || tab === 'stock' ? (
         <View style={styles.buttonRow}>
           <Pressable
             style={[styles.actionButton, styles.scanButton]}
