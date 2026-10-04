@@ -13,16 +13,21 @@
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
         }
+      },
+      "bundleIdentifier": "com.bkfarrell.filamentinventory",
+      "config": {
+        "usesNonExemptEncryption": false
       }
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#1F4FA8",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.bkfarrell.filamentinventory"
     },
     "web": {
       "favicon": "./assets/favicon.png"
