@@ -1,4 +1,4 @@
-# Filament Inventory Manager
+# Track My Filament
 
 A phone app for tracking 3D printer filament: what spools you own, how much is left on each,
 what you paid, and when you're running low.
