@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Button, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { todayIso, type NewSpool, type Product, type Spool } from '../db';
@@ -12,6 +12,7 @@ type Props = {
   onCancel: () => void;
   onDelete?: () => void;
   onFinish?: () => void; // "mark as used up"
+  footer?: ReactNode; // shown at the bottom, e.g. the spool's history
 };
 
 // Turns a stored number into text for an input box, without long decimals.
@@ -25,6 +26,7 @@ export default function SpoolForm({
   onCancel,
   onDelete,
   onFinish,
+  footer,
 }: Props) {
   const styles = useStyles();
   const { colors } = useTheme();
@@ -250,6 +252,7 @@ export default function SpoolForm({
           <Button title="Delete spool" onPress={onDelete} color={colors.danger} />
         </View>
       ) : null}
+      {footer}
     </ScrollView>
   );
 }

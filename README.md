@@ -10,15 +10,23 @@ phone** in a small SQLite database, so there are no servers or accounts to set u
 
 The app has three tabs:
 
-- **In Use:** an **In the AMS** section at the top shows what's loaded in each AMS slot right now
-  (slot, color, type and estimated amount left, live from the printer), followed by the spools
-  you've opened, with how much is left and quick buttons to log prints
+- **In Use:** two sections.
+  - **In the AMS:** spools loaded in an AMS slot, each showing its slot, the live color and the
+    AMS's estimate of what's left. Use **Change slot** to move it or **Remove from AMS** to take
+    it out. A spool you remove that still has filament moves to Available (if it looks empty,
+    you're asked whether it's used up). Slots the printer reports as loaded but that aren't
+    linked to a spool are listed too.
+  - **Available:** opened spools that aren't loaded right now, with **Load into AMS**.
 - **Stock:** sealed spools waiting to be used, grouped by material and then by color, with how
   many of each color you have and which brands they are. Tap a color to see each spool, and tap
-  **Open** when you load one; it moves to In Use
+  **Open** when you load one: you pick the AMS slot it's going into (or open it without loading)
 - **Printer:** live status of your Bambu Lab printer and every AMS slot (material, color, how
   much is left), read through Home Assistant (see "Printer connection" below)
 - **Reports:** spending and purchase history (see below)
+
+Every spool keeps a **history** (shown at the bottom of its edit screen): when it was bought,
+opened, loaded into or removed from each AMS slot, prints logged, amount-left changes, and when it
+was used up.
 
 New spools start sealed, so they land in Stock until you open them.
 
@@ -98,7 +106,10 @@ right away.** That's the main loop you'll use while building.
 | `src/components/BarcodeScanner.tsx` | The camera screen that reads a box's barcode |
 | `src/components/StockScreen.tsx` | The Stock tab: sealed spools grouped by material and color |
 | `src/stock.ts` | The grouping and counting behind the Stock tab |
-| `src/components/AmsSection.tsx` | The "In the AMS" section at the top of In Use |
+| `src/components/InUseScreen.tsx` | The In Use tab: In the AMS and Available sections |
+| `src/components/SlotPicker.tsx` | Choosing which AMS slot a spool goes into |
+| `src/components/SpoolHistory.tsx` | A spool's history timeline |
+| `src/locations.ts` | AMS slot names, ordering, and matching them to the printer's slots |
 | `src/components/TrayRow.tsx` | How one AMS slot is shown (used on In Use and Printer) |
 | `src/usePrinter.ts` | Reads the printer every 15 seconds while a screen shows it |
 | `src/components/PrinterScreen.tsx` | The Printer tab: Home Assistant connection, printer status, AMS slots |

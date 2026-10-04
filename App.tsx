@@ -2,15 +2,16 @@ import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
 import { SQLiteProvider, useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, FlatList, Modal, Pressable, Text, View } from 'react-native';
+import { Alert, Modal, Pressable, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
-import AmsSection from './src/components/AmsSection';
 import BarcodeScanner from './src/components/BarcodeScanner';
+import InUseScreen from './src/components/InUseScreen';
 import PrinterScreen from './src/components/PrinterScreen';
 import ReportsScreen from './src/components/ReportsScreen';
-import SpoolCard from './src/components/SpoolCard';
+import SlotPicker from './src/components/SlotPicker';
 import SpoolForm from './src/components/SpoolForm';
+import SpoolHistory from './src/components/SpoolHistory';
 import StockScreen from './src/components/StockScreen';
 import {
   addSpool,
@@ -20,26 +21,32 @@ import {
   isLowStock,
   listAllSpools,
   listSpools,
+  loadSpool,
   markFinished,
   migrateDb,
   normalizeBarcode,
   openSpool,
   recordUsage,
   rememberProduct,
+  unloadSpool,
   updateSpool,
   type NewSpool,
   type Product,
   type Spool,
 } from './src/db';
+import { trayLocationKey, formatLocation, slotOptions } from './src/locations';
 import { justWentLow, notifyLowStock, setupNotifications } from './src/notifications';
 import { themedStyles, useTheme } from './src/theme';
+import { usePrinterData, useSavedSettings } from './src/usePrinter';
 
 // What's open on top of the list right now.
 type Screen =
   | null
   | { kind: 'scan' }
   | { kind: 'add'; barcode?: string; product?: Product | null }
-  | { kind: 'edit'; spool: Spool };
+  | { kind: 'edit'; spool: Spool }
+  // Choosing an AMS slot. allowSkip: opening from Stock, where "don't load it" is allowed.
+  | { kind: 'pickSlot'; spool: Spool; allowSkip: boolean };
 
 export default function App() {
   const { colors } = useTheme();
@@ -69,6 +76,12 @@ function InventoryScreen() {
   // In Use = opened spools, Stock = sealed spools, Printer = live AMS, Reports = spending.
   const [tab, setTab] = useState<'inUse' | 'stock' | 'printer' | 'reports'>('inUse');
   const [screen, setScreen] = useState<Screen>(null);
+
+  // Live printer reading, used on In Use and in the slot picker. Settings are re-read when
+  // the tab changes, so connecting in the Printer tab takes effect here too.
+  const [printerSettings] = useSavedSettings(tab);
+  const watchPrinter = tab === 'inUse' || screen?.kind === 'pickSlot';
+  const printer = usePrinterData(watchPrinter ? (printerSettings ?? null) : null);
 
   const refresh = useCallback(async () => {
     setSpools(await listSpools(db));
@@ -120,9 +133,47 @@ function InventoryScreen() {
     }
   }
 
-  async function handleOpen(spool: Spool) {
-    await openSpool(db, spool.id);
+  // Opening a sealed spool from Stock: ask which AMS slot it's going into.
+  function handleOpen(spool: Spool) {
+    setScreen({ kind: 'pickSlot', spool, allowSkip: true });
+  }
+
+  async function handlePickSlot(spool: Spool, location: string | null) {
+    setScreen(null);
+    if (location) await loadSpool(db, spool.id, location);
+    else await openSpool(db, spool.id);
     await refresh();
+    setTab('inUse');
+  }
+
+  // Taking a spool out of the AMS. With filament left it becomes Available; if it looks
+  // empty, offer to mark it used up instead.
+  function handleRemove(spool: Spool) {
+    const tray = printer.data?.trays.find((t) => trayLocationKey(t) === spool.location);
+    const looksEmpty = spool.remainingWeightG <= 0 || tray?.remainPct === 0;
+    const remove = async () => {
+      await unloadSpool(db, spool.id);
+      await refresh();
+    };
+    if (!looksEmpty) {
+      remove();
+      return;
+    }
+    Alert.alert(
+      'Is it used up?',
+      `${spool.brand} ${spool.material} – ${spool.color} looks empty.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Keep as available', onPress: remove },
+        {
+          text: 'Used up',
+          onPress: async () => {
+            await markFinished(db, spool.id);
+            await refresh();
+          },
+        },
+      ]
+    );
   }
 
   async function handleUse(spool: Spool, grams: number) {
@@ -168,6 +219,8 @@ function InventoryScreen() {
   }
 
   const inUse = spools.filter((s) => s.openedAt !== null);
+  const inAms = inUse.filter((s) => s.location !== null);
+  const available = inUse.filter((s) => s.location === null);
   const sealed = spools.filter((s) => s.openedAt === null);
   // What filament is worth, based on what you paid per gram.
   const valueOf = (list: Spool[]) =>
@@ -187,7 +240,8 @@ function InventoryScreen() {
         </View>
         {tab === 'inUse' ? (
           <Text style={styles.summary}>
-            {inUse.length} in use · {valueOf(inUse).toFixed(2)} worth left
+            {inAms.length} in the AMS · {available.length} available ·{' '}
+            {valueOf(inUse).toFixed(2)} worth left
             {lowCount > 0 ? ` · ${lowCount} low` : ''}
           </Text>
         ) : null}
@@ -212,31 +266,18 @@ function InventoryScreen() {
       ) : null}
 
       {tab === 'inUse' ? (
-        <FlatList
-          data={inUse}
-          keyExtractor={(s) => String(s.id)}
-          contentContainerStyle={styles.list}
-          ListHeaderComponent={
-            <View style={styles.listHeader}>
-              <AmsSection />
-              {inUse.length > 0 ? <Text style={styles.sectionTitle}>Opened spools</Text> : null}
-            </View>
-          }
-          renderItem={({ item }) => (
-            <SpoolCard
-              spool={item}
-              onUse={(g) => handleUse(item, g)}
-              onEdit={() => setScreen({ kind: 'edit', spool: item })}
-              onDelete={() => handleDelete(item)}
-            />
-          )}
-          ListEmptyComponent={
-            <Text style={styles.empty}>
-              {sealed.length > 0
-                ? 'Nothing in use. Open a spool from the Stock tab when you load it.'
-                : 'No spools yet. Tap “Scan box” or “Add spool” to log your first one.'}
-            </Text>
-          }
+        <InUseScreen
+          inAms={inAms}
+          available={available}
+          hasSealed={sealed.length > 0}
+          printer={printer.data}
+          printerConnected={!!printerSettings}
+          printerError={printerSettings ? printer.error : ''}
+          onUse={handleUse}
+          onEdit={(spool) => setScreen({ kind: 'edit', spool })}
+          onDelete={handleDelete}
+          onLoad={(spool) => setScreen({ kind: 'pickSlot', spool, allowSkip: false })}
+          onRemove={handleRemove}
         />
       ) : null}
 
@@ -257,6 +298,21 @@ function InventoryScreen() {
       <Modal visible={screen !== null} animationType="slide" onRequestClose={() => setScreen(null)}>
         {screen?.kind === 'scan' ? (
           <BarcodeScanner onScanned={handleScanned} onCancel={() => setScreen(null)} />
+        ) : screen?.kind === 'pickSlot' ? (
+          <SafeAreaView style={styles.modal}>
+            <SlotPicker
+              spool={screen.spool}
+              options={slotOptions(
+                printer.data?.trays ?? null,
+                inAms.map((s) => s.location!)
+              )}
+              occupants={new Map(inAms.map((s) => [s.location!, s]))}
+              printerConnected={!!printer.data}
+              allowSkip={screen.allowSkip}
+              onPick={(location) => handlePickSlot(screen.spool, location)}
+              onCancel={() => setScreen(null)}
+            />
+          </SafeAreaView>
         ) : screen !== null ? (
           <SafeAreaView style={styles.modal}>
             <SpoolForm
@@ -269,6 +325,18 @@ function InventoryScreen() {
               onCancel={() => setScreen(null)}
               onDelete={screen.kind === 'edit' ? () => handleDelete(screen.spool) : undefined}
               onFinish={screen.kind === 'edit' ? () => handleFinish(screen.spool) : undefined}
+              footer={
+                screen.kind === 'edit' ? (
+                  <>
+                    {screen.spool.location ? (
+                      <Text style={styles.locationNote}>
+                        In {formatLocation(screen.spool.location)}
+                      </Text>
+                    ) : null}
+                    <SpoolHistory spoolId={screen.spool.id} />
+                  </>
+                ) : undefined
+              }
             />
           </SafeAreaView>
         ) : null}
@@ -303,16 +371,7 @@ const useStyles = themedStyles((c) => ({
   tabActive: { backgroundColor: c.segmentActive },
   tabText: { fontSize: 15, color: c.textSecondary },
   tabTextActive: { color: c.text, fontWeight: '600' },
-  list: { paddingHorizontal: 16, paddingBottom: 100, gap: 12 },
-  listHeader: { gap: 12 },
-  sectionTitle: { fontSize: 17, fontWeight: '600', color: c.text, marginTop: 4 },
-  empty: {
-    textAlign: 'center',
-    color: c.textMuted,
-    marginTop: 40,
-    fontSize: 16,
-    paddingHorizontal: 24,
-  },
+  locationNote: { fontSize: 14, color: c.primary, fontWeight: '600', marginTop: 16 },
   buttonRow: {
     position: 'absolute',
     right: 20,
