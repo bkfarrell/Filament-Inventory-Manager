@@ -29,6 +29,7 @@ export type Tray = {
   type: string; // material, e.g. "PLA"
   colorHex: string | null; // "#RRGGBB", or null if unknown
   remainPct: number | null; // estimated % left, or null if the printer doesn't know
+  spoolWeightG: number | null; // full spool weight, when reported (Bambu spools)
   empty: boolean;
   active: boolean; // currently feeding the printer
   tagUid: string | null; // Bambu RFID tag, for Bambu spools
@@ -195,6 +196,7 @@ function toTray(e: HaEntity): Tray {
     type,
     colorHex: toHex(a.color),
     remainPct: remain !== null && remain >= 0 ? Math.min(100, remain) : null,
+    spoolWeightG: positive(num(a.tray_weight) ?? num(a.weight) ?? num(a.spool_weight)),
     empty,
     active: a.active === true,
     tagUid: tag && !/^0+$/.test(tag) ? tag : null,
@@ -267,6 +269,17 @@ function str(v: unknown) {
 function num(v: unknown): number | null {
   const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() ? Number(v) : NaN;
   return Number.isFinite(n) ? n : null;
+}
+
+function positive(n: number | null) {
+  return n !== null && n > 0 ? n : null;
+}
+
+// Estimated grams left, when both the % and the full spool weight are known.
+export function estimatedGrams(t: Tray): number | null {
+  return t.remainPct !== null && t.spoolWeightG !== null
+    ? Math.round((t.remainPct / 100) * t.spoolWeightG)
+    : null;
 }
 
 function isUnknown(state: string) {

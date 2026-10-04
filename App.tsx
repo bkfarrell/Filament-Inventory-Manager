@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Alert, FlatList, Modal, Pressable, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
+import AmsSection from './src/components/AmsSection';
 import BarcodeScanner from './src/components/BarcodeScanner';
 import PrinterScreen from './src/components/PrinterScreen';
 import ReportsScreen from './src/components/ReportsScreen';
@@ -215,6 +216,12 @@ function InventoryScreen() {
           data={inUse}
           keyExtractor={(s) => String(s.id)}
           contentContainerStyle={styles.list}
+          ListHeaderComponent={
+            <View style={styles.listHeader}>
+              <AmsSection />
+              {inUse.length > 0 ? <Text style={styles.sectionTitle}>Opened spools</Text> : null}
+            </View>
+          }
           renderItem={({ item }) => (
             <SpoolCard
               spool={item}
@@ -297,6 +304,8 @@ const useStyles = themedStyles((c) => ({
   tabText: { fontSize: 15, color: c.textSecondary },
   tabTextActive: { color: c.text, fontWeight: '600' },
   list: { paddingHorizontal: 16, paddingBottom: 100, gap: 12 },
+  listHeader: { gap: 12 },
+  sectionTitle: { fontSize: 17, fontWeight: '600', color: c.text, marginTop: 4 },
   empty: {
     textAlign: 'center',
     color: c.textMuted,
