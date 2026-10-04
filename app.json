@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Filament Inventory",
+    "name": "Track My Filament",
     "slug": "filament-inventory-manager",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -9,7 +9,7 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSLocalNetworkUsageDescription": "Filament Inventory connects to Home Assistant on your network to read your printer and AMS.",
+        "NSLocalNetworkUsageDescription": "Track My Filament connects to Home Assistant on your network to read your printer and AMS.",
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
         }
@@ -41,7 +41,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow Filament Inventory to use the camera to scan barcodes on filament boxes.",
+          "cameraPermission": "Allow Track My Filament to use the camera to scan barcodes on filament boxes.",
           "microphonePermission": false,
           "recordAudioAndroid": false
         }

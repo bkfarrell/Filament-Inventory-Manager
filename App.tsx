@@ -178,7 +178,7 @@ function InventoryScreen() {
   return (
     <SafeAreaView style={styles.screen}>
       <View style={styles.header}>
-        <Text style={styles.title}>Filament</Text>
+        <Text style={styles.title}>Track My Filament</Text>
         <View style={styles.tabs}>
           <TabButton label="In Use" active={tab === 'inUse'} onPress={() => setTab('inUse')} />
           <TabButton label="Stock" active={tab === 'stock'} onPress={() => setTab('stock')} />
