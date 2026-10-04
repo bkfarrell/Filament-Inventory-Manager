@@ -48,12 +48,17 @@ export function usePrinterData(settings: HaSettings | null) {
 }
 
 // The saved Home Assistant connection: undefined while loading, null if not connected.
-export function useSavedSettings() {
+// Changing `reloadKey` reads it again (e.g. after connecting in the Printer tab).
+export function useSavedSettings(reloadKey?: unknown) {
   const [settings, setSettings] = useState<HaSettings | null | undefined>(undefined);
   useEffect(() => {
+    let cancelled = false;
     loadSettings()
-      .then(setSettings)
-      .catch(() => setSettings(null));
-  }, []);
+      .then((s) => !cancelled && setSettings(s))
+      .catch(() => !cancelled && setSettings(null));
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadKey]);
   return [settings, setSettings] as const;
 }

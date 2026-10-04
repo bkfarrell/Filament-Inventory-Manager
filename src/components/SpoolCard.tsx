@@ -1,6 +1,8 @@
 import { Pressable, Text, View } from 'react-native';
 
 import { costPerGram, isLowStock, type Spool } from '../db';
+import type { Tray } from '../homeAssistant';
+import { formatLocation } from '../locations';
 import { themedStyles } from '../theme';
 
 type Props = {
@@ -8,9 +10,20 @@ type Props = {
   onUse: (grams: number) => void;
   onEdit: () => void;
   onDelete: () => void;
+  tray?: Tray | null; // live printer reading for the slot this spool is in
+  onLoad?: () => void; // load into (or move to another) AMS slot
+  onRemove?: () => void; // take out of the AMS
 };
 
-export default function SpoolCard({ spool, onUse, onEdit, onDelete }: Props) {
+export default function SpoolCard({
+  spool,
+  onUse,
+  onEdit,
+  onDelete,
+  tray,
+  onLoad,
+  onRemove,
+}: Props) {
   const styles = useStyles();
   const low = isLowStock(spool);
   const pct =
@@ -18,6 +31,20 @@ export default function SpoolCard({ spool, onUse, onEdit, onDelete }: Props) {
 
   return (
     <Pressable onPress={onEdit} onLongPress={onDelete} style={[styles.card, low && styles.cardLow]}>
+      {spool.location ? (
+        <View style={styles.slotRow}>
+          <View
+            style={[
+              styles.swatch,
+              tray?.colorHex && !tray.empty
+                ? { backgroundColor: tray.colorHex }
+                : styles.swatchUnknown,
+            ]}
+          />
+          <Text style={styles.slotLabel}>{formatLocation(spool.location)}</Text>
+          {tray?.active ? <Text style={styles.activeBadge}>Printing from this</Text> : null}
+        </View>
+      ) : null}
       <View style={styles.header}>
         <Text style={styles.name}>
           {spool.brand} {spool.material}
@@ -36,6 +63,9 @@ export default function SpoolCard({ spool, onUse, onEdit, onDelete }: Props) {
         {Math.round(spool.remainingWeightG)} g of {Math.round(spool.totalWeightG)} g left ·{' '}
         {spool.pricePaid.toFixed(2)} paid · {(costPerGram(spool) * 1000).toFixed(2)}/kg
       </Text>
+      {tray && !tray.empty && tray.remainPct !== null ? (
+        <Text style={styles.meta}>AMS estimate: about {Math.round(tray.remainPct)}% left</Text>
+      ) : null}
       <Text style={styles.meta}>{openedLabel(spool.openedAt)}</Text>
       {spool.notes ? (
         <Text style={styles.notes} numberOfLines={2}>
@@ -50,6 +80,20 @@ export default function SpoolCard({ spool, onUse, onEdit, onDelete }: Props) {
           </Pressable>
         ))}
       </View>
+      {onLoad || onRemove ? (
+        <View style={styles.actions}>
+          {onLoad ? (
+            <Pressable style={styles.moveButton} onPress={onLoad}>
+              <Text style={styles.moveText}>{spool.location ? 'Change slot' : 'Load into AMS'}</Text>
+            </Pressable>
+          ) : null}
+          {onRemove && spool.location ? (
+            <Pressable style={styles.moveButton} onPress={onRemove}>
+              <Text style={styles.moveText}>Remove from AMS</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
     </Pressable>
   );
 }
@@ -121,4 +165,26 @@ const useStyles = themedStyles((c) => ({
     borderRadius: 6,
   },
   useText: { fontSize: 14, color: c.text },
+  slotRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  swatch: { width: 18, height: 18, borderRadius: 9, borderWidth: 1, borderColor: c.border },
+  swatchUnknown: { borderStyle: 'dashed', borderColor: c.textMuted },
+  slotLabel: { fontSize: 13, fontWeight: '700', color: c.primary },
+  activeBadge: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: c.onAccent,
+    backgroundColor: c.primary,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 5,
+    overflow: 'hidden',
+  },
+  moveButton: {
+    borderWidth: 1,
+    borderColor: c.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  moveText: { fontSize: 14, color: c.primary, fontWeight: '600' },
 }));
