@@ -36,7 +36,7 @@ export default function BarcodeScanner({ onScanned, onCancel }: Props) {
         {permission.canAskAgain ? (
           <Button title="Allow camera" onPress={requestPermission} color={colors.primary} />
         ) : (
-          <Text style={styles.message}>Turn on camera access for Expo Go in your phone&apos;s Settings.</Text>
+          <Text style={styles.message}>Turn on camera access for this app in your phone&apos;s Settings.</Text>
         )}
         <Button title="Cancel" onPress={onCancel} color={colors.mutedButton} />
       </View>

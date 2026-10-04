@@ -126,6 +126,27 @@ data** at the bottom of the Printer tab and use **Share raw data**.
 > builds that use a plain `http://` address will also need cleartext traffic enabled (via
 > `expo-build-properties`).
 
+## Installing on your iPhone (TestFlight)
+
+The project is set up to build in Expo's cloud (EAS) and upload straight to TestFlight, so no Mac
+or Xcode is needed. You need an [Apple Developer account](https://developer.apple.com/programs/)
+($99/year) and a free [Expo account](https://expo.dev/signup).
+
+```bash
+npx eas-cli@latest login
+npx eas-cli@latest init                                   # first time only: links an Expo project
+npx eas-cli@latest build --platform ios --auto-submit     # build + upload to TestFlight
+```
+
+The first build asks to sign in to your Apple account and offers to create certificates and the
+App Store Connect app for you; answer yes. When Apple finishes processing (they email you), add
+yourself as a tester under **App Store Connect → your app → TestFlight → Internal Testing**, then
+install from the TestFlight app. Run the build command again to ship an update.
+
+Settings already in place: bundle ID `com.bkfarrell.filamentinventory` (in `app.json`, permanent
+after the first upload), automatic build numbers (`eas.json`), the export-compliance answer, the
+app icon, and camera / local network permission messages.
+
 ## Useful commands
 
 ```bash
