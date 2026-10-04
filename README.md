@@ -14,6 +14,8 @@ The app has three tabs:
 - **Stock:** sealed spools waiting to be used, grouped by material and then by color, with how
   many of each color you have and which brands they are. Tap a color to see each spool, and tap
   **Open** when you load one; it moves to In Use
+- **Printer:** live status of your Bambu Lab printer and every AMS slot (material, color, how
+  much is left), read through Home Assistant (see "Printer connection" below)
 - **Reports:** spending and purchase history (see below)
 
 New spools start sealed, so they land in Stock until you open them.
@@ -94,6 +96,8 @@ right away.** That's the main loop you'll use while building.
 | `src/components/BarcodeScanner.tsx` | The camera screen that reads a box's barcode |
 | `src/components/StockScreen.tsx` | The Stock tab: sealed spools grouped by material and color |
 | `src/stock.ts` | The grouping and counting behind the Stock tab |
+| `src/components/PrinterScreen.tsx` | The Printer tab: Home Assistant connection, printer status, AMS slots |
+| `src/homeAssistant.ts` | Talks to Home Assistant and recognizes the Bambu Lab printer and AMS entities |
 | `src/components/ReportsScreen.tsx` | The Reports tab: totals, monthly chart, breakdowns, purchase history |
 | `src/reports.ts` | The math behind the reports (totals by month, brand, material) |
 | `src/theme.ts` | All the app's colors for light and dark mode. Change a color here and it updates everywhere |
@@ -102,6 +106,25 @@ right away.** That's the main loop you'll use while building.
 | `src/components/SpoolForm.tsx` | The form for adding and editing a spool, including the scale calculator |
 | `app.json` | App name, icon, and other settings |
 | `assets/` | App icon and splash images |
+
+## Printer connection (Bambu Lab via Home Assistant)
+
+The Printer tab reads your printer through Home Assistant's
+[Bambu Lab integration](https://github.com/greghesp/ha-bambulab) (installed via HACS), so the app
+never talks to the printer directly.
+
+1. In Home Assistant, click your name (bottom left) → **Security** → **Long-lived access tokens** →
+   **Create token**. Copy it.
+2. In the app, open **Printer**, enter your Home Assistant address (e.g. `http://192.168.10.5:8123`)
+   and paste the token. It's kept in the phone's secure storage.
+3. Away from home, it works over Tailscale as long as that address is reachable.
+
+The app finds the printer's entities automatically. If something looks wrong, open **Raw printer
+data** at the bottom of the Printer tab and use **Share raw data**.
+
+> For a standalone/TestFlight build: iOS local-network settings are already in `app.json`. Android
+> builds that use a plain `http://` address will also need cleartext traffic enabled (via
+> `expo-build-properties`).
 
 ## Useful commands
 
