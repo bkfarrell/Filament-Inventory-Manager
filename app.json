@@ -27,7 +27,10 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.bkfarrell.filamentinventory"
+      "package": "com.bkfarrell.filamentinventory",
+      "permissions": [
+        "android.permission.CAMERA"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -44,6 +47,12 @@
         }
       ],
       "expo-secure-store"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "234d71fd-e8d4-470b-9cf2-f81eb759f89b"
+      }
+    },
+    "owner": "bkfarrell"
   }
 }
