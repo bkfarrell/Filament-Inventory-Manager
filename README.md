@@ -10,7 +10,9 @@ phone** in a small SQLite database, so there are no servers or accounts to set u
 
 The app has three tabs:
 
-- **In Use:** spools you've opened, with how much is left and quick buttons to log prints
+- **In Use:** an **In the AMS** section at the top shows what's loaded in each AMS slot right now
+  (slot, color, type and estimated amount left, live from the printer), followed by the spools
+  you've opened, with how much is left and quick buttons to log prints
 - **Stock:** sealed spools waiting to be used, grouped by material and then by color, with how
   many of each color you have and which brands they are. Tap a color to see each spool, and tap
   **Open** when you load one; it moves to In Use
@@ -96,6 +98,9 @@ right away.** That's the main loop you'll use while building.
 | `src/components/BarcodeScanner.tsx` | The camera screen that reads a box's barcode |
 | `src/components/StockScreen.tsx` | The Stock tab: sealed spools grouped by material and color |
 | `src/stock.ts` | The grouping and counting behind the Stock tab |
+| `src/components/AmsSection.tsx` | The "In the AMS" section at the top of In Use |
+| `src/components/TrayRow.tsx` | How one AMS slot is shown (used on In Use and Printer) |
+| `src/usePrinter.ts` | Reads the printer every 15 seconds while a screen shows it |
 | `src/components/PrinterScreen.tsx` | The Printer tab: Home Assistant connection, printer status, AMS slots |
 | `src/homeAssistant.ts` | Talks to Home Assistant and recognizes the Bambu Lab printer and AMS entities |
 | `src/components/ReportsScreen.tsx` | The Reports tab: totals, monthly chart, breakdowns, purchase history |

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -14,29 +14,20 @@ import {
 
 import {
   clearSettings,
-  fetchPrinter,
-  loadSettings,
   normalizeUrl,
   saveSettings,
   testConnection,
   type HaSettings,
   type PrinterData,
-  type Tray,
 } from '../homeAssistant';
 import { themedStyles, useTheme } from '../theme';
-
-const REFRESH_MS = 15_000; // how often to re-read the printer while this tab is open
+import { PRINTER_REFRESH_MS, usePrinterData, useSavedSettings } from '../usePrinter';
+import TrayRow from './TrayRow';
 
 export default function PrinterScreen() {
   const styles = useStyles();
-  const [settings, setSettings] = useState<HaSettings | null | undefined>(undefined);
+  const [settings, setSettings] = useSavedSettings();
   const [editing, setEditing] = useState(false);
-
-  useEffect(() => {
-    loadSettings()
-      .then(setSettings)
-      .catch(() => setSettings(null));
-  }, []);
 
   if (settings === undefined) {
     return <ActivityIndicator style={{ marginTop: 40 }} />;
@@ -77,44 +68,8 @@ function PrinterView(props: {
   styles: ReturnType<typeof useStyles>;
 }) {
   const { settings, styles } = props;
-  const [data, setData] = useState<PrinterData | null>(null);
-  const [error, setError] = useState('');
-  const [refreshing, setRefreshing] = useState(false); // pull-to-refresh spinner
-  const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
+  const { data, error, updatedAt, refreshing, refreshNow } = usePrinterData(settings);
   const [showRaw, setShowRaw] = useState(false);
-
-  const [reloadKey, setReloadKey] = useState(0); // bumped by pull-to-refresh
-
-  // Reads the printer now and every REFRESH_MS while this tab is open.
-  useEffect(() => {
-    let cancelled = false;
-    const tick = () =>
-      fetchPrinter(settings).then(
-        (next) => {
-          if (cancelled) return;
-          setData(next);
-          setError('');
-          setUpdatedAt(new Date());
-          setRefreshing(false);
-        },
-        (e: unknown) => {
-          if (cancelled) return;
-          setError(e instanceof Error ? e.message : String(e));
-          setRefreshing(false);
-        }
-      );
-    tick();
-    const timer = setInterval(tick, REFRESH_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [settings, reloadKey]);
-
-  function refreshNow() {
-    setRefreshing(true);
-    setReloadKey((k) => k + 1);
-  }
 
   function confirmDisconnect() {
     Alert.alert('Disconnect Home Assistant?', 'The app will forget the address and token.', [
@@ -164,8 +119,8 @@ function PrinterView(props: {
           <Text style={styles.cardTitle}>AMS {ams}</Text>
           {data!.trays
             .filter((t) => t.ams === ams)
-            .map((t) => (
-              <TrayRow key={t.entityId} tray={t} styles={styles} />
+            .map((t, i) => (
+              <TrayRow key={t.entityId} tray={t} first={i === 0} />
             ))}
         </View>
       ))}
@@ -173,15 +128,15 @@ function PrinterView(props: {
       {others.length > 0 ? (
         <View style={styles.card}>
           <Text style={styles.cardTitle}>External</Text>
-          {others.map((t) => (
-            <TrayRow key={t.entityId} tray={t} styles={styles} />
+          {others.map((t, i) => (
+            <TrayRow key={t.entityId} tray={t} first={i === 0} />
           ))}
         </View>
       ) : null}
 
       {updatedAt ? (
         <Text style={styles.footnote}>
-          Updated {updatedAt.toLocaleTimeString()} · refreshes every {REFRESH_MS / 1000} s · pull
+          Updated {updatedAt.toLocaleTimeString()} · refreshes every {PRINTER_REFRESH_MS / 1000} s · pull
           down to refresh now
         </Text>
       ) : null}
@@ -261,43 +216,6 @@ function StatusCard({
           </Text>
         </>
       ) : null}
-    </View>
-  );
-}
-
-function TrayRow({ tray, styles }: { tray: Tray; styles: ReturnType<typeof useStyles> }) {
-  const title = tray.empty ? 'Empty' : tray.name || tray.type || 'Unknown filament';
-  const details = [
-    tray.type && tray.type !== title ? tray.type : '',
-    tray.tagUid ? 'Bambu RFID' : '',
-    tray.remainPct !== null && !tray.empty ? `${Math.round(tray.remainPct)}% left` : '',
-  ]
-    .filter(Boolean)
-    .join(' · ');
-
-  return (
-    <View style={styles.trayRow}>
-      <View
-        style={[
-          styles.swatch,
-          tray.empty || !tray.colorHex
-            ? styles.swatchEmpty
-            : { backgroundColor: tray.colorHex },
-        ]}
-      />
-      <View style={{ flex: 1, gap: 2 }}>
-        <View style={styles.trayHeader}>
-          <Text style={styles.trayLabel}>{tray.label}</Text>
-          {tray.active ? <Text style={styles.activeBadge}>In use now</Text> : null}
-        </View>
-        <Text style={[styles.trayName, tray.empty && styles.trayNameEmpty]}>{title}</Text>
-        {details ? <Text style={styles.muted}>{details}</Text> : null}
-        {tray.remainPct !== null && !tray.empty ? (
-          <View style={styles.track}>
-            <View style={[styles.fill, { width: `${tray.remainPct}%` }]} />
-          </View>
-        ) : null}
-      </View>
     </View>
   );
 }
@@ -480,36 +398,6 @@ const useStyles = themedStyles((c) => ({
   taskName: { fontSize: 15, color: c.textSecondary },
   track: { height: 8, backgroundColor: c.track, borderRadius: 4, overflow: 'hidden' },
   fill: { height: 8, backgroundColor: c.primary },
-  trayRow: {
-    flexDirection: 'row',
-    gap: 12,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: c.divider,
-  },
-  swatch: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: c.border,
-    marginTop: 2,
-  },
-  swatchEmpty: { borderStyle: 'dashed', borderColor: c.textMuted },
-  trayHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  trayLabel: { fontSize: 12, color: c.textMuted, fontWeight: '600' },
-  activeBadge: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: c.onAccent,
-    backgroundColor: c.primary,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: 5,
-    overflow: 'hidden',
-  },
-  trayName: { fontSize: 15, fontWeight: '600', color: c.text },
-  trayNameEmpty: { color: c.textMuted, fontStyle: 'italic' },
   raw: {
     fontSize: 11,
     color: c.textSecondary,
