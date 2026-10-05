@@ -15,14 +15,18 @@ export async function saveSettings(s: HaSettings) {
   const res = await fetch('/api/ha/settings', {
     method: 'PUT',
     credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'X-TMF-Request': '1' },
     body: JSON.stringify(s),
   });
   if (!res.ok) throw new Error(((await res.json()) as { error?: string }).error ?? 'Saving failed.');
 }
 
 export async function clearSettings() {
-  await fetch('/api/ha/settings', { method: 'DELETE', credentials: 'same-origin' });
+  await fetch('/api/ha/settings', {
+    method: 'DELETE',
+    credentials: 'same-origin',
+    headers: { 'X-TMF-Request': '1' },
+  });
 }
 
 // Asks the server to make the request. A token is only sent when testing a new
@@ -32,7 +36,7 @@ export async function sendRequest(s: HaSettings, path: string, init: RequestInit
     method: 'POST',
     credentials: 'same-origin',
     signal: init.signal,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'X-TMF-Request': '1' },
     body: JSON.stringify({
       path,
       method: init.method ?? 'GET',

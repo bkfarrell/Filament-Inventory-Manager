@@ -168,17 +168,21 @@ app icon, and camera / local network permission messages.
 ## Web app (run on your own computer, with accounts)
 
 Besides the iPhone app, Track My Filament can run as a **web app served from your own computer**
-(for example a Mac Studio), so you and others in your house can use it from any browser.
+(for example a Mac Studio). Everyone in the house can use it from a phone or computer browser,
+including the **phone's camera for scanning boxes**.
 
+- **Home network only.** The server refuses connections from anywhere except this computer and
+  private home-network addresses. (Set `ALLOW_ANY_NETWORK=1` only if you know you need otherwise.)
+- **Secure (HTTPS).** Phone browsers only allow the camera on secure pages, so the server uses
+  its own home certificate (see "Phone setup" below).
 - **Separate from the iPhone app.** The web app keeps its own data on the server; it doesn't sync
-  with the phone.
+  with the phone app.
 - **Accounts.** The first account you create is the admin. The admin adds accounts for everyone
   else (account menu, top right → People). Everyone's spools, stock, history, reports and printer
   connection are completely separate.
 - **Data** is stored on the server's disk: `accounts.db` plus one database per person in `users/`.
-  Removed accounts are moved to `deleted/`, not erased. Back up the data folder to keep it safe.
+  Removed accounts are moved to `deleted/`, not erased.
 - **Printer:** the server talks to Home Assistant for you, so no Home Assistant changes are needed.
-  Each person connects their own (or the same) Home Assistant in the Printer tab.
 
 ### Running it on a Mac (background service)
 
@@ -190,10 +194,10 @@ cd Filament-Inventory-Manager
 ./server/macos/install.sh
 ```
 
-That builds the web app and installs a background service that starts when you log in and restarts
-if it stops. Open **http://localhost:8787** on the Mac, or **http://<your-mac-name>.local:8787**
-from other devices at home, and create the first account. If macOS asks whether "node" may accept
-incoming connections, click **Allow**.
+That builds the web app, creates the HTTPS certificate, and installs a background service that
+starts when you log in and restarts if it stops. It prints the address to use, e.g.
+**https://Mac-Studio.local:8787**. If macOS asks whether "node" may accept incoming connections,
+click **Allow**.
 
 - Data: `~/Library/Application Support/TrackMyFilament` (included in Time Machine backups)
 - Log: `~/Library/Logs/TrackMyFilament.log`
@@ -201,20 +205,47 @@ incoming connections, click **Allow**.
 - Remove the service: `./server/macos/install.sh uninstall` (keeps your data)
 - Different port: `PORT=9000 ./server/macos/install.sh`
 
+### Phone setup (once per phone)
+
+The server signs its HTTPS certificate with a small **Track My Filament Home CA** that is only
+allowed to vouch for local names (`*.local`) and private home addresses, so it can't be used to
+impersonate real websites. Each phone needs to trust it once:
+
+1. Get the file `ca.crt` onto the iPhone: AirDrop it from
+   `~/Library/Application Support/TrackMyFilament/tls/ca.crt`, or open
+   `https://<your-mac>.local:8787/ca.crt` in Safari (tap through the warning that one time).
+2. **Settings → General → VPN & Device Management** → tap the downloaded profile → **Install**.
+3. **Settings → General → About → Certificate Trust Settings** → turn on
+   **Track My Filament Home CA**.
+4. Open `https://<your-mac>.local:8787` in Safari. It should show as secure. Tip: **Share → Add
+   to Home Screen** makes it open like an app.
+
+Computers can do the same (on a Mac, double-click `ca.crt` and set it to "Always Trust" in
+Keychain Access), or just accept the browser's warning, since they rarely need the camera.
+
+### Checking the printer connection
+
+To see exactly what the app recognizes from your printer (status and every AMS slot), run this
+on the server:
+
+```bash
+npm run ha:check
+```
+
+It asks for your Home Assistant address and token, prints what it found, and saves
+`ha-report.txt` (the printer's raw entities, never your token) to share if anything looks wrong.
+
 ### Running it by hand (any computer)
 
 ```bash
 npm install
 npm run build:web        # builds the web app into dist/
-npm run server           # serves it at http://localhost:8787
+./server/make-cert.sh    # optional: HTTPS certificate (needed for phone cameras)
+npm run server           # https://localhost:8787 (or http:// without a certificate)
 ```
 
 Settings (environment variables): `PORT` (default 8787), `HOST` (default all interfaces),
-`DATA_DIR` (default `./data`), `WEB_DIR` (default `./dist`).
-
-> **Barcode scanning in the browser** uses your webcam, and browsers only allow the camera on
-> `http://localhost` or over HTTPS. To scan from other devices, put the server behind HTTPS, for
-> example with `tailscale serve --bg 8787`.
+`DATA_DIR` (default `./data`), `WEB_DIR` (default `./dist`), `TLS_CERT` / `TLS_KEY`.
 
 ## Useful commands
 

@@ -4,6 +4,7 @@
   "main": "index.ts",
   "dependencies": {
     "@expo/metro-runtime": "~57.0.16",
+    "barcode-detector": "3.2.2",
     "expo": "~57.0.26",
     "expo-camera": "~57.0.6",
     "expo-notifications": "~57.0.21",
@@ -15,7 +16,8 @@
     "react-dom": "^19.2.3",
     "react-native": "0.86.3",
     "react-native-safe-area-context": "~5.7.0",
-    "react-native-web": "^0.21.3"
+    "react-native-web": "^0.21.3",
+    "zxing-wasm": "3.1.3"
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
@@ -29,8 +31,9 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "build:web": "expo export --platform web",
-    "server": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON server/index.ts"
+    "build:web": "expo export --platform web && node server/copy-zxing.mjs",
+    "server": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON server/index.ts",
+    "ha:check": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON server/ha-check.ts"
   },
   "private": true,
   "engines": {

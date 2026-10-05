@@ -42,3 +42,6 @@ yarn-error.*
 
 # Track My Filament web server data (accounts and everyone's filament databases)
 /data/
+
+# Output of npm run ha:check
+ha-report.txt

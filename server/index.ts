@@ -1,6 +1,7 @@
 /// <reference types="node" />
-import { createReadStream, existsSync, mkdirSync, renameSync, statSync } from 'node:fs';
-import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { createReadStream, existsSync, mkdirSync, readFileSync, renameSync, statSync } from 'node:fs';
+import { createServer, type IncomingMessage, type RequestListener, type ServerResponse } from 'node:http';
+import { createServer as createHttpsServer } from 'node:https';
 import { extname, join, resolve, sep } from 'node:path';
 
 import type { SQLiteDatabase } from 'expo-sqlite';
@@ -36,12 +37,21 @@ import { openDatabase } from './sqlite.ts';
 //   HOST      address to listen on (default 0.0.0.0 = every network interface)
 //   DATA_DIR  where data is stored (default ./data next to this project)
 //   WEB_DIR   the built web app (default ./dist)
+//   ALLOW_ANY_NETWORK=1  also accept requests from outside your home network (off by default)
+//
+// HTTPS: if DATA_DIR/tls/server.crt and server.key exist (made by server/make-cert.sh), the
+// server uses https://, which phones need for the camera. TLS_CERT / TLS_KEY override the paths.
 
 const ROOT = resolve(import.meta.dirname, '..');
 const PORT = Number(process.env.PORT ?? 8787);
 const HOST = process.env.HOST ?? '0.0.0.0';
 const DATA_DIR = resolve(process.env.DATA_DIR ?? join(ROOT, 'data'));
 const WEB_DIR = resolve(process.env.WEB_DIR ?? join(ROOT, 'dist'));
+const TLS_CERT = process.env.TLS_CERT ?? join(DATA_DIR, 'tls', 'server.crt');
+const TLS_KEY = process.env.TLS_KEY ?? join(DATA_DIR, 'tls', 'server.key');
+const CA_CERT = join(DATA_DIR, 'tls', 'ca.crt');
+const USE_TLS = existsSync(TLS_CERT) && existsSync(TLS_KEY);
+const ALLOW_ANY_NETWORK = process.env.ALLOW_ANY_NETWORK === '1';
 const COOKIE = 'tmf_session';
 const MAX_BODY = 1_000_000; // bytes
 
@@ -123,7 +133,8 @@ function cookieValue(req: IncomingMessage, name: string) {
 }
 
 function sessionCookie(req: IncomingMessage, token: string, maxAge: number) {
-  const secure = req.headers['x-forwarded-proto'] === 'https' || process.env.SECURE_COOKIES === '1';
+  const secure =
+    USE_TLS || req.headers['x-forwarded-proto'] === 'https' || process.env.SECURE_COOKIES === '1';
   return `${COOKIE}=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAge}${secure ? '; Secure' : ''}`;
 }
 
@@ -189,14 +200,11 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, path: string
   const ip = req.socket.remoteAddress ?? '';
 
   // Block requests made by other websites on your behalf (cross-site request forgery).
-  if (method !== 'GET' && method !== 'HEAD' && req.headers.origin) {
-    let sameOrigin = false;
-    try {
-      sameOrigin = new URL(req.headers.origin).host === req.headers.host;
-    } catch {
-      // not a valid origin: treat as cross-site
-    }
-    if (!sameOrigin) throw new HttpError(403, 'Cross-site request blocked.');
+  // The app marks every change with an X-TMF-Request header; browsers won't let another
+  // website add a custom header to a request here (this server never allows it via CORS).
+  // Unlike comparing addresses, this keeps working behind HTTPS relays like Tailscale Serve.
+  if (method !== 'GET' && method !== 'HEAD' && req.headers['x-tmf-request'] !== '1') {
+    throw new HttpError(403, 'Cross-site request blocked.');
   }
 
   const token = cookieValue(req, COOKIE);
@@ -397,7 +405,15 @@ function serveStatic(req: IncomingMessage, res: ServerResponse, path: string) {
   // Resolve inside WEB_DIR only, so a request can't reach other files on the computer.
   let file = resolve(WEB_DIR, `.${decodeURIComponent(path)}`);
   if (file !== WEB_DIR && !file.startsWith(WEB_DIR + sep)) file = join(WEB_DIR, 'index.html');
-  if (!existsSync(file) || statSync(file).isDirectory()) file = join(WEB_DIR, 'index.html');
+  if (!existsSync(file) || statSync(file).isDirectory()) {
+    // A missing file (e.g. /something.js) is a real 404; any other path is a screen in the app.
+    if (extname(path)) {
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('Not found.');
+      return;
+    }
+    file = join(WEB_DIR, 'index.html');
+  }
   const isIndex = file.endsWith('index.html');
   res.writeHead(200, {
     'Content-Type': TYPES[extname(file)] ?? 'application/octet-stream',
@@ -407,14 +423,44 @@ function serveStatic(req: IncomingMessage, res: ServerResponse, path: string) {
   createReadStream(file).pipe(res);
 }
 
+// ---- Home network only ----
+
+// True for this computer and private home-network addresses (10.x, 172.16–31.x, 192.168.x,
+// and their IPv6 equivalents). Anything else is refused unless ALLOW_ANY_NETWORK=1.
+export function isHomeNetwork(address: string | undefined) {
+  if (!address) return false;
+  const a = address.replace(/^::ffff:/i, '').toLowerCase();
+  if (a === '::1' || /^127\./.test(a)) return true;
+  if (/^10\./.test(a) || /^192\.168\./.test(a)) return true;
+  const m = a.match(/^172\.(\d+)\./);
+  if (m && Number(m[1]) >= 16 && Number(m[1]) <= 31) return true;
+  if (/^f[cd][0-9a-f]{2}:/.test(a) || /^fe[89ab][0-9a-f]:/.test(a)) return true; // IPv6 private / link-local
+  return false;
+}
+
 // ---- Server ----
 
-const server = createServer(async (req, res) => {
+const handler: RequestListener = async (req, res) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'same-origin');
+  if (!ALLOW_ANY_NETWORK && !isHomeNetwork(req.socket.remoteAddress)) {
+    res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('Track My Filament only accepts connections from your home network.');
+    return;
+  }
   const path = new URL(req.url ?? '/', 'http://localhost').pathname;
   try {
+    // The home CA certificate, for installing on phones and computers (it's public; the
+    // private key never leaves DATA_DIR).
+    if (path === '/ca.crt' && existsSync(CA_CERT)) {
+      res.writeHead(200, {
+        'Content-Type': 'application/x-x509-ca-cert',
+        'Content-Disposition': 'attachment; filename="TrackMyFilament-HomeCA.crt"',
+      });
+      res.end(readFileSync(CA_CERT));
+      return;
+    }
     if (path.startsWith('/api/')) await handleApi(req, res, path);
     else serveStatic(req, res, path);
   } catch (e) {
@@ -426,10 +472,17 @@ const server = createServer(async (req, res) => {
     console.error(e);
     send(res, 500, { error: 'Something went wrong on the server.' });
   }
-});
+};
+
+const server = USE_TLS
+  ? createHttpsServer({ cert: readFileSync(TLS_CERT), key: readFileSync(TLS_KEY) }, handler)
+  : createServer(handler);
 
 server.listen(PORT, HOST, () => {
-  console.log(`Track My Filament is running at http://localhost:${PORT}`);
+  const scheme = USE_TLS ? 'https' : 'http';
+  console.log(`Track My Filament is running at ${scheme}://localhost:${PORT}`);
   console.log(`Data is stored in ${DATA_DIR}`);
+  if (!USE_TLS) console.log('Note: no HTTPS certificate found, so phone cameras won\'t work. Run server/make-cert.sh.');
+  if (ALLOW_ANY_NETWORK) console.log('Warning: accepting connections from any network (ALLOW_ANY_NETWORK=1).');
   if (!accounts.hasUsers()) console.log('No accounts yet: open the address above to create the first one.');
 });

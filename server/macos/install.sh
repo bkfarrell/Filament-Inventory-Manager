@@ -41,6 +41,9 @@ echo "Installing libraries and building the web app (this takes a minute)..."
 npm install --no-fund --no-audit
 npm run build:web
 
+echo "Creating the HTTPS certificate (needed for phone cameras)..."
+DATA_DIR="$DATA_DIR" ./server/make-cert.sh
+
 cat > "$PLIST" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -74,10 +77,17 @@ launchctl bootstrap "$DOMAIN" "$PLIST"
 
 HOSTNAME_LOCAL="$(scutil --get LocalHostName 2>/dev/null || hostname -s).local"
 echo
-echo "Track My Filament is running."
-echo "  On this Mac:          http://localhost:$PORT"
-echo "  Elsewhere at home:    http://$HOSTNAME_LOCAL:$PORT"
+echo "Track My Filament is running (home network only)."
+echo "  On this Mac:          https://localhost:$PORT"
+echo "  Phones & computers:   https://$HOSTNAME_LOCAL:$PORT"
 echo "  Your data:            $DATA_DIR"
 echo "  Log file:             $LOG"
+echo
+echo "To use it securely from your iPhone (needed for the camera), install the home"
+echo "certificate once:  $DATA_DIR/tls/ca.crt"
+echo "  1. AirDrop that file to your iPhone (or open https://$HOSTNAME_LOCAL:$PORT/ca.crt there)."
+echo "  2. Settings → General → VPN & Device Management → install the downloaded profile."
+echo "  3. Settings → General → About → Certificate Trust Settings → turn on"
+echo "     \"Track My Filament Home CA\"."
 echo
 echo "If macOS asks whether \"node\" may accept incoming network connections, click Allow."

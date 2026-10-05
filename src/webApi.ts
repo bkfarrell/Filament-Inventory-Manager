@@ -22,7 +22,10 @@ export async function api<T>(
     res = await fetch(path, {
       method: options.method ?? (options.body === undefined ? 'GET' : 'POST'),
       credentials: 'same-origin',
-      headers: options.body === undefined ? undefined : { 'Content-Type': 'application/json' },
+      headers: {
+        'X-TMF-Request': '1', // tells the server this request came from the app itself
+        ...(options.body === undefined ? {} : { 'Content-Type': 'application/json' }),
+      },
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
     });
   } catch {
