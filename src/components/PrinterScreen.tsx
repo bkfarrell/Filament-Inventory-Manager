@@ -19,6 +19,7 @@ import {
   type HaSettings,
   type PrinterData,
 } from '../homeAssistant';
+import { shareableAttributes } from '../printerParse';
 import { showDialog } from '../dialogs';
 import { themedStyles, useTheme } from '../theme';
 import { PRINTER_REFRESH_MS, usePrinterData, useSavedSettings } from '../usePrinter';
@@ -81,7 +82,7 @@ function PrinterView(props: {
   async function shareRaw() {
     if (!data) return;
     const lines = data.entities.map(
-      (e) => `${e.entity_id} = ${e.state}\n  ${JSON.stringify(e.attributes)}`
+      (e) => `${e.entity_id} = ${e.state}\n  ${JSON.stringify(shareableAttributes(e.attributes))}`
     );
     await Share.share({ message: lines.join('\n') });
   }

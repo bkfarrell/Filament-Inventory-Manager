@@ -1,7 +1,9 @@
 import type { Tray } from './homeAssistant';
+import { amsName, externalKey, externalLabel, slotLabel } from './printerParse';
 
 // A spool's location is stored as a short key:
 //   "ams-2-3"  → AMS 2, slot 3
+//   "ams-128-1" → AMS HT (Bambu numbers AMS HT units from 128)
 //   "ext-1"    → external spool holder 1 ("ext-l" / "ext-r" for left/right holders)
 
 export type SlotOption = {
@@ -17,17 +19,15 @@ export function amsKey(ams: number, slot: number) {
 
 export function formatLocation(key: string) {
   const ams = key.match(/^ams-(\d+)-(\d+)$/);
-  if (ams) return `AMS ${ams[1]} · Slot ${ams[2]}`;
-  if (key === 'ext-l') return 'External spool (left)';
-  if (key === 'ext-r') return 'External spool (right)';
-  const ext = key.match(/^ext-(\d+)$/);
-  if (ext) return ext[1] === '1' ? 'External spool' : `External spool ${ext[1]}`;
+  if (ams) return slotLabel(Number(ams[1]), Number(ams[2]));
+  const ext = key.match(/^ext-(\w+)$/);
+  if (ext) return externalLabel(ext[1]);
   return key;
 }
 
 function groupOf(key: string) {
   const ams = key.match(/^ams-(\d+)-/);
-  return ams ? `AMS ${ams[1]}` : 'External';
+  return ams ? amsName(Number(ams[1])) : 'External';
 }
 
 // AMS slots in order (AMS 1 slot 1, 1·2 … 2·1 …), external holders last.
@@ -42,12 +42,8 @@ export function compareLocations(a: string, b: string) {
 // The location key a printer slot corresponds to.
 export function trayLocationKey(t: Tray): string | null {
   if (t.ams !== null && t.slot !== null) return amsKey(t.ams, t.slot);
-  const id = t.entityId;
-  if (!/external_spool/.test(id)) return null;
-  if (/left/.test(id)) return 'ext-l';
-  if (/right/.test(id)) return 'ext-r';
-  const n = id.match(/external_spool_?(\d+)/);
-  return `ext-${n ? n[1] : '1'}`;
+  if (!/external_?spool/.test(t.entityId)) return null;
+  return `ext-${externalKey(t.entityId)}`;
 }
 
 // The slots to offer when choosing where a spool goes. Uses the printer's real slots when

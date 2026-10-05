@@ -40,6 +40,16 @@ export type PrinterData = {
   entities: HaEntity[]; // everything found, for the "raw data" view
 };
 
+// Attributes that are temporary access links (camera / image proxies); left out of raw data
+// that people share for troubleshooting.
+const PRIVATE_ATTRIBUTES = new Set(['access_token', 'entity_picture', 'token']);
+
+export function shareableAttributes(attributes: Record<string, unknown>) {
+  return Object.fromEntries(
+    Object.entries(attributes).filter(([k]) => !PRIVATE_ATTRIBUTES.has(k))
+  );
+}
+
 export function parsePrinterData(entities: HaEntity[]): PrinterData {
   const trays = entities
     .filter(looksLikeTray)
@@ -56,6 +66,8 @@ export function parsePrinterData(entities: HaEntity[]): PrinterData {
 export function looksLikeTray(e: HaEntity) {
   const id = e.entity_id;
   if (!id.startsWith('sensor.')) return false;
+  // "Active tray" repeats whichever slot is printing; it isn't a slot of its own.
+  if (/_active_tray$/.test(id)) return false;
   return (
     /ams_\d+_tray_\d+/.test(id) ||
     /external_spool/.test(id) ||
@@ -69,7 +81,7 @@ function toTray(e: HaEntity): Tray {
   const match = e.entity_id.match(/ams_(\d+)_tray_(\d+)/);
   const ams = match ? Number(match[1]) : null;
   const slot = match ? Number(match[2]) : null;
-  const external = /external_spool/.test(e.entity_id);
+  const external = /external_?spool/.test(e.entity_id);
 
   const type = str(a.type);
   const name = str(a.name) || (isUnknown(e.state) ? '' : e.state);
@@ -77,8 +89,8 @@ function toTray(e: HaEntity): Tray {
   const empty = a.empty === true || /^empty$/i.test(e.state);
 
   let label: string;
-  if (ams !== null) label = `AMS ${ams} · Slot ${slot}`;
-  else if (external) label = externalLabel(e.entity_id);
+  if (ams !== null && slot !== null) label = slotLabel(ams, slot);
+  else if (external) label = externalLabel(externalKey(e.entity_id));
   else label = str(a.friendly_name) || e.entity_id;
 
   const tag = str(a.tag_uid);
@@ -99,12 +111,34 @@ function toTray(e: HaEntity): Tray {
 }
 
 // Printers with two nozzles have more than one external spool holder.
-function externalLabel(entityId: string) {
-  const n = entityId.match(/external_spool_?(\d+)/);
-  if (n) return `External spool ${n[1]}`;
-  if (/left/.test(entityId)) return 'External spool (left)';
-  if (/right/.test(entityId)) return 'External spool (right)';
-  return 'External spool';
+// ---- Names for AMS units and slots (shared with src/locations.ts) ----
+
+// Bambu numbers regular AMS units 1, 2, 3… and AMS HT units (one slot each) from 128.
+export function amsName(unit: number) {
+  if (unit >= 128) return unit === 128 ? 'AMS HT' : `AMS HT ${unit - 127}`;
+  return `AMS ${unit}`;
+}
+
+// "AMS 2 · Slot 3", or just "AMS HT" for the single-slot AMS HT.
+export function slotLabel(unit: number, slot: number) {
+  return unit >= 128 ? amsName(unit) : `${amsName(unit)} · Slot ${slot}`;
+}
+
+// Which external spool holder an entity is: "1", "2", or "l" / "r" (left/right).
+// Handles both "…_externalspool2_external_spool" and "…_external_spool_2" styles.
+export function externalKey(entityId: string) {
+  const m =
+    entityId.match(/externalspool(\d+)/) ?? entityId.match(/external_spool_?(\d+)/);
+  if (m) return m[1];
+  if (/left/.test(entityId)) return 'l';
+  if (/right/.test(entityId)) return 'r';
+  return '1';
+}
+
+export function externalLabel(key: string) {
+  if (key === 'l') return 'External spool (left)';
+  if (key === 'r') return 'External spool (right)';
+  return `External spool ${key}`;
 }
 
 const STATUS_NAMES: Record<string, string> = {
@@ -133,9 +167,14 @@ function toPrinterStatus(entities: HaEntity[]): PrinterStatus | null {
   const task = find('task_name');
   const weight = find('print_weight');
   const friendly = str(statusEntity.attributes.friendly_name).replace(/\s*print status$/i, '');
+  // Prefer the printer's own name ("H2C") over the device name with its serial number.
+  const ownName = find('printer_name');
 
   return {
-    name: friendly || prefix.replace(/^sensor\./, ''),
+    name:
+      (ownName && !isUnknown(ownName.state) ? ownName.state : '') ||
+      friendly ||
+      prefix.replace(/^sensor\./, ''),
     status: STATUS_NAMES[raw.toLowerCase()] ?? capitalize(raw.replace(/_/g, ' ')),
     rawStatus: raw,
     progressPct: progress ? num(progress.state) : null,

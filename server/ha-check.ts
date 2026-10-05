@@ -2,7 +2,7 @@
 import { writeFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 
-import { looksLikeTray, parsePrinterData, type HaEntity } from '../src/printerParse.ts';
+import { looksLikeTray, parsePrinterData, shareableAttributes, type HaEntity } from '../src/printerParse.ts';
 
 // Checks the connection to Home Assistant and shows what Track My Filament recognizes from
 // your Bambu Lab printer: its status and every AMS slot. It also saves ha-report.txt with
@@ -123,7 +123,7 @@ async function main() {
   // 5. Save the raw entities for troubleshooting (no token included).
   lines.push('', `=== Raw entities (${entities.length}) ===`);
   for (const e of entities) {
-    lines.push(`${e.entity_id} = ${e.state}`, `  ${JSON.stringify(e.attributes)}`);
+    lines.push(`${e.entity_id} = ${e.state}`, `  ${JSON.stringify(shareableAttributes(e.attributes))}`);
   }
   writeFileSync('ha-report.txt', lines.join('\n') + '\n');
   console.log(`\nSaved ha-report.txt (${entities.length} entities, no token). Share it if anything above looks wrong.`);
