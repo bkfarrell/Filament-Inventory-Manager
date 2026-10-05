@@ -39,3 +39,6 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Track My Filament web server data (accounts and everyone's filament databases)
+/data/

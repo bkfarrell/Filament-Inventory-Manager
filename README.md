@@ -112,6 +112,8 @@ right away.** That's the main loop you'll use while building.
 | `src/locations.ts` | AMS slot names, ordering, and matching them to the printer's slots |
 | `src/components/TrayRow.tsx` | How one AMS slot is shown (used on In Use and Printer) |
 | `src/usePrinter.ts` | Reads the printer every 15 seconds while a screen shows it |
+| `src/store.ts`, `src/StoreProvider.tsx` | Where data lives: the phone's database (`.web.tsx`: the server, with sign-in) |
+| `server/` | The web app's server: accounts, per-person databases, Home Assistant relay, macOS installer |
 | `src/components/PrinterScreen.tsx` | The Printer tab: Home Assistant connection, printer status, AMS slots |
 | `src/homeAssistant.ts` | Talks to Home Assistant and recognizes the Bambu Lab printer and AMS entities |
 | `src/components/ReportsScreen.tsx` | The Reports tab: totals, monthly chart, breakdowns, purchase history |
@@ -162,6 +164,57 @@ install from the TestFlight app. Run the build command again to ship an update.
 Settings already in place: bundle ID `com.bkfarrell.filamentinventory` (in `app.json`, permanent
 after the first upload), automatic build numbers (`eas.json`), the export-compliance answer, the
 app icon, and camera / local network permission messages.
+
+## Web app (run on your own computer, with accounts)
+
+Besides the iPhone app, Track My Filament can run as a **web app served from your own computer**
+(for example a Mac Studio), so you and others in your house can use it from any browser.
+
+- **Separate from the iPhone app.** The web app keeps its own data on the server; it doesn't sync
+  with the phone.
+- **Accounts.** The first account you create is the admin. The admin adds accounts for everyone
+  else (account menu, top right → People). Everyone's spools, stock, history, reports and printer
+  connection are completely separate.
+- **Data** is stored on the server's disk: `accounts.db` plus one database per person in `users/`.
+  Removed accounts are moved to `deleted/`, not erased. Back up the data folder to keep it safe.
+- **Printer:** the server talks to Home Assistant for you, so no Home Assistant changes are needed.
+  Each person connects their own (or the same) Home Assistant in the Printer tab.
+
+### Running it on a Mac (background service)
+
+You need [Node.js](https://nodejs.org) **22.18 or newer** (the LTS download is fine). Then:
+
+```bash
+git clone https://github.com/bkfarrell/Filament-Inventory-Manager.git
+cd Filament-Inventory-Manager
+./server/macos/install.sh
+```
+
+That builds the web app and installs a background service that starts when you log in and restarts
+if it stops. Open **http://localhost:8787** on the Mac, or **http://<your-mac-name>.local:8787**
+from other devices at home, and create the first account. If macOS asks whether "node" may accept
+incoming connections, click **Allow**.
+
+- Data: `~/Library/Application Support/TrackMyFilament` (included in Time Machine backups)
+- Log: `~/Library/Logs/TrackMyFilament.log`
+- Update: `git pull` then `./server/macos/install.sh` again
+- Remove the service: `./server/macos/install.sh uninstall` (keeps your data)
+- Different port: `PORT=9000 ./server/macos/install.sh`
+
+### Running it by hand (any computer)
+
+```bash
+npm install
+npm run build:web        # builds the web app into dist/
+npm run server           # serves it at http://localhost:8787
+```
+
+Settings (environment variables): `PORT` (default 8787), `HOST` (default all interfaces),
+`DATA_DIR` (default `./data`), `WEB_DIR` (default `./dist`).
+
+> **Barcode scanning in the browser** uses your webcam, and browsers only allow the camera on
+> `http://localhost` or over HTTPS. To scan from other devices, put the server behind HTTPS, for
+> example with `tailscale serve --bg 8787`.
 
 ## Useful commands
 

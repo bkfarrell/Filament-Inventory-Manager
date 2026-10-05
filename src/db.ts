@@ -418,6 +418,14 @@ export async function deleteSpool(db: SQLiteDatabase, id: number) {
   });
 }
 
+// True when a spool just went from above the low-stock line to at or below it.
+export function justWentLow(before: Spool, after: Spool) {
+  return (
+    before.remainingWeightG > LOW_STOCK_THRESHOLD_G &&
+    after.remainingWeightG <= LOW_STOCK_THRESHOLD_G
+  );
+}
+
 export function isLowStock(s: Spool) {
   return s.remainingWeightG <= LOW_STOCK_THRESHOLD_G;
 }

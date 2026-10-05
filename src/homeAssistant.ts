@@ -1,4 +1,4 @@
-import * as SecureStore from 'expo-secure-store';
+import { sendRequest } from './haTransport';
 
 // Reads your Bambu Lab printer through Home Assistant, using the Bambu Lab
 // integration (HACS, domain "bambu_lab") that's already connected to the printer.
@@ -51,23 +51,11 @@ export type PrinterData = {
   entities: HaEntity[]; // everything found, for the "raw data" view
 };
 
-const SETTINGS_KEY = 'homeAssistant';
 const TIMEOUT_MS = 10_000;
 
-// ---- Settings (kept in the phone's secure storage, not the regular database) ----
-
-export async function loadSettings(): Promise<HaSettings | null> {
-  const raw = await SecureStore.getItemAsync(SETTINGS_KEY);
-  return raw ? (JSON.parse(raw) as HaSettings) : null;
-}
-
-export async function saveSettings(s: HaSettings) {
-  await SecureStore.setItemAsync(SETTINGS_KEY, JSON.stringify(s));
-}
-
-export async function clearSettings() {
-  await SecureStore.deleteItemAsync(SETTINGS_KEY);
-}
+// Where the Home Assistant address and token are kept, and how requests are sent,
+// differs between the phone and the web version (see haTransport.ts / .web.ts).
+export { clearSettings, loadSettings, saveSettings } from './haTransport';
 
 // Tidies what was typed: adds http:// if missing and removes a trailing slash.
 export function normalizeUrl(url: string) {
@@ -82,14 +70,7 @@ async function haFetch(s: HaSettings, path: string, init?: RequestInit) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const res = await fetch(`${s.url}${path}`, {
-      ...init,
-      signal: controller.signal,
-      headers: {
-        Authorization: `Bearer ${s.token}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    const res = await sendRequest(s, path, { ...init, signal: controller.signal });
     if (res.status === 401) throw new Error('Home Assistant rejected the token. Check it in Settings.');
     if (!res.ok) throw new Error(`Home Assistant returned an error (${res.status}).`);
     return res;

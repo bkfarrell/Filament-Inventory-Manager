@@ -1,9 +1,9 @@
-import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 
-import { listEvents, type SpoolEvent } from '../db';
+import type { SpoolEvent } from '../db';
 import { formatLocation } from '../locations';
+import { useStore } from '../store';
 import { themedStyles } from '../theme';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -11,18 +11,18 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 // Everything that has happened to one spool, newest first.
 export default function SpoolHistory({ spoolId }: { spoolId: number }) {
   const styles = useStyles();
-  const db = useSQLiteContext();
+  const store = useStore();
   const [events, setEvents] = useState<SpoolEvent[] | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    listEvents(db, spoolId).then((list) => {
+    store.listEvents(spoolId).then((list) => {
       if (!cancelled) setEvents(list);
     });
     return () => {
       cancelled = true;
     };
-  }, [db, spoolId]);
+  }, [store, spoolId]);
 
   return (
     <View style={styles.section}>

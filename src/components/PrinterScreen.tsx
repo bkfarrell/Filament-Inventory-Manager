@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Platform,
   Pressable,
   RefreshControl,
@@ -20,6 +19,7 @@ import {
   type HaSettings,
   type PrinterData,
 } from '../homeAssistant';
+import { showDialog } from '../dialogs';
 import { themedStyles, useTheme } from '../theme';
 import { PRINTER_REFRESH_MS, usePrinterData, useSavedSettings } from '../usePrinter';
 import TrayRow from './TrayRow';
@@ -72,7 +72,7 @@ function PrinterView(props: {
   const [showRaw, setShowRaw] = useState(false);
 
   function confirmDisconnect() {
-    Alert.alert('Disconnect Home Assistant?', 'The app will forget the address and token.', [
+    showDialog('Disconnect Home Assistant?', 'The app will forget the address and token.', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Disconnect', style: 'destructive', onPress: props.onDisconnect },
     ]);
@@ -279,8 +279,9 @@ function ConnectForm(props: {
           keyboardType="url"
         />
         <Text style={styles.hint}>
-          The same address you use in a browser. Away from home, use the address that works over
-          Tailscale.
+          {Platform.OS === 'web'
+            ? 'The address the Track My Filament server can reach Home Assistant at (the server makes the requests for you).'
+            : 'The same address you use in a browser. Away from home, use the address that works over Tailscale.'}
         </Text>
 
         <Text style={styles.label}>Long-lived access token</Text>
@@ -293,8 +294,10 @@ function ConnectForm(props: {
         />
         <Text style={styles.hint}>
           In Home Assistant: click your name (bottom left) → Security tab → Long-lived access tokens
-          → Create token. Name it &quot;Filament app&quot;, copy it, and paste it here. It&apos;s
-          stored in your phone&apos;s secure storage.
+          → Create token. Name it &quot;Filament app&quot;, copy it, and paste it here.{' '}
+          {Platform.OS === 'web'
+            ? 'It’s saved on the server for your account only and never shown again.'
+            : 'It’s stored in your phone’s secure storage.'}
         </Text>
 
         {error ? <Text style={styles.errorText}>{error}</Text> : null}

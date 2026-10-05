@@ -1,7 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
-import { LOW_STOCK_THRESHOLD_G, type Spool } from './db';
+import type { Spool } from './db';
 
 const CHANNEL_ID = 'low-stock';
 
@@ -43,12 +43,4 @@ export async function notifyLowStock(spool: Spool) {
     },
     trigger: Platform.OS === 'android' ? { channelId: CHANNEL_ID } : null,
   });
-}
-
-// True when a spool just went from above the low-stock line to at or below it.
-export function justWentLow(before: Spool, after: Spool) {
-  return (
-    before.remainingWeightG > LOW_STOCK_THRESHOLD_G &&
-    after.remainingWeightG <= LOW_STOCK_THRESHOLD_G
-  );
 }

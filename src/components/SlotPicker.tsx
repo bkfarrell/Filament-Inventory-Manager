@@ -1,7 +1,8 @@
-import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import type { Spool } from '../db';
 import type { SlotOption } from '../locations';
+import { showDialog } from '../dialogs';
 import { themedStyles } from '../theme';
 
 type Props = {
@@ -25,7 +26,7 @@ export default function SlotPicker(props: Props) {
   function choose(option: SlotOption) {
     const occupant = occupants.get(option.key);
     if (occupant && occupant.id !== spool.id) {
-      Alert.alert(
+      showDialog(
         `Replace ${occupant.brand} ${occupant.material}?`,
         `${option.label} has ${short(occupant)}. It will be taken out and moved to Available.`,
         [
