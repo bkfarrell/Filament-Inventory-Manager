@@ -1,10 +1,10 @@
 import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
-import { SQLiteProvider, useSQLiteContext } from 'expo-sqlite';
-import { useCallback, useEffect, useState } from 'react';
-import { Alert, Modal, Pressable, Text, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Modal, Platform, Pressable, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
+import AccountButton from './src/components/AccountButton';
 import BarcodeScanner from './src/components/BarcodeScanner';
 import InUseScreen from './src/components/InUseScreen';
 import PrinterScreen from './src/components/PrinterScreen';
@@ -14,28 +14,21 @@ import SpoolForm from './src/components/SpoolForm';
 import SpoolHistory from './src/components/SpoolHistory';
 import StockScreen from './src/components/StockScreen';
 import {
-  addSpool,
   costPerGram,
-  deleteSpool,
-  findProduct,
   isLowStock,
-  listAllSpools,
-  listSpools,
-  loadSpool,
-  markFinished,
-  migrateDb,
+  justWentLow,
   normalizeBarcode,
-  openSpool,
-  recordUsage,
-  rememberProduct,
-  unloadSpool,
-  updateSpool,
   type NewSpool,
+  type PrintJob,
   type Product,
   type Spool,
 } from './src/db';
+import { showDialog } from './src/dialogs';
 import { trayLocationKey, formatLocation, slotOptions } from './src/locations';
-import { justWentLow, notifyLowStock, setupNotifications } from './src/notifications';
+import { notifyLowStock, setupNotifications } from './src/notifications';
+import { printSnapshot } from './src/printerParse';
+import { useStore } from './src/store';
+import StoreProvider from './src/StoreProvider';
 import { themedStyles, useTheme } from './src/theme';
 import { usePrinterData, useSavedSettings } from './src/usePrinter';
 
@@ -58,10 +51,10 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      {/* Opens (or creates) filament.db on the phone and sets up the tables. */}
-      <SQLiteProvider databaseName="filament.db" onInit={migrateDb}>
+      {/* Where data lives: the phone's own database, or (on the web) your server. */}
+      <StoreProvider>
         <InventoryScreen />
-      </SQLiteProvider>
+      </StoreProvider>
       {/* "auto" makes the clock and battery icons dark in light mode and light in dark mode. */}
       <StatusBar style="auto" />
     </SafeAreaProvider>
@@ -70,9 +63,14 @@ export default function App() {
 
 function InventoryScreen() {
   const styles = useStyles();
-  const db = useSQLiteContext();
+  const store = useStore();
   const [spools, setSpools] = useState<Spool[]>([]); // spools you still have
   const [allSpools, setAllSpools] = useState<Spool[]>([]); // every purchase, for reports
+  const [printJobs, setPrintJobs] = useState<PrintJob[]>([]); // prints counted automatically
+  const spoolsRef = useRef(spools); // latest list, for comparing before/after a print
+  useEffect(() => {
+    spoolsRef.current = spools;
+  }, [spools]);
   // In Use = opened spools, Stock = sealed spools, Printer = live AMS, Reports = spending.
   const [tab, setTab] = useState<'inUse' | 'stock' | 'printer' | 'reports'>('inUse');
   const [screen, setScreen] = useState<Screen>(null);
@@ -80,13 +78,55 @@ function InventoryScreen() {
   // Live printer reading, used on In Use and in the slot picker. Settings are re-read when
   // the tab changes, so connecting in the Printer tab takes effect here too.
   const [printerSettings] = useSavedSettings(tab);
-  const watchPrinter = tab === 'inUse' || screen?.kind === 'pickSlot';
+  // Read the printer on every tab (so finished prints are counted while the app is open),
+  // except Printer, which reads it itself.
+  const watchPrinter = tab !== 'printer' || screen?.kind === 'pickSlot';
   const printer = usePrinterData(watchPrinter ? (printerSettings ?? null) : null);
 
   const refresh = useCallback(async () => {
-    setSpools(await listSpools(db));
-    setAllSpools(await listAllSpools(db));
-  }, [db]);
+    setSpools(await store.listSpools());
+    setAllSpools(await store.listAllSpools());
+    setPrintJobs(await store.listPrintJobs(5));
+  }, [store]);
+
+  // Each printer reading: if a print just ended, subtract its filament from the spools in the
+  // slots it used (the store makes sure each print only counts once).
+  useEffect(() => {
+    if (!printer.data) return;
+    let cancelled = false;
+    store.syncPrintUsage(printSnapshot(printer.data.printer)).then(async (job) => {
+      if (cancelled || !job) return;
+      const before = spoolsRef.current;
+      await refresh();
+      const after = await store.listSpools();
+      for (const e of job.entries) {
+        const b = before.find((s) => s.id === e.spoolId);
+        const a = after.find((s) => s.id === e.spoolId);
+        if (b && a && justWentLow(b, a)) await notifyLowStock(a);
+      }
+    }, () => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [printer.data, store, refresh]);
+
+  function handleUndoPrint(job: PrintJob) {
+    const grams = job.entries.reduce((sum, e) => sum + (e.spoolId !== null ? e.grams : 0), 0);
+    showDialog(
+      'Undo this print?',
+      `Puts ${Math.round(grams * 10) / 10} g back on the spools “${job.taskName}” used.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Undo',
+          onPress: async () => {
+            await store.undoPrintJob(job.jobKey);
+            await refresh();
+          },
+        },
+      ]
+    );
+  }
 
   useEffect(() => {
     refresh();
@@ -99,9 +139,9 @@ function InventoryScreen() {
 
   // Reloads the list, then sends a notification if `before` just became low.
   async function refreshAndCheckLow(before: Spool) {
-    const updated = await listSpools(db);
+    const updated = await store.listSpools();
     setSpools(updated);
-    setAllSpools(await listAllSpools(db));
+    setAllSpools(await store.listAllSpools());
 
     const after = updated.find((s) => s.id === before.id);
     if (after && justWentLow(before, after)) {
@@ -111,7 +151,7 @@ function InventoryScreen() {
 
   async function handleScanned(raw: string) {
     const barcode = normalizeBarcode(raw);
-    const product = await findProduct(db, barcode);
+    const product = await store.findProduct(barcode);
     setScreen({ kind: 'add', barcode, product });
   }
 
@@ -119,17 +159,17 @@ function InventoryScreen() {
     const current = screen;
     setScreen(null);
     if (current?.kind === 'edit') {
-      await updateSpool(db, current.spool.id, values);
+      await store.updateSpool(current.spool.id, values);
       await refreshAndCheckLow(current.spool);
     } else {
-      await addSpool(db, values);
+      await store.addSpool(values);
       await refresh();
     }
     // Show the tab the spool now lives in: sealed spools go to Stock, opened ones to In Use.
     setTab(values.openedAt ? 'inUse' : 'stock');
     // Remember (or update) what this barcode means for the next scan.
     if (values.barcode) {
-      await rememberProduct(db, values.barcode, values);
+      await store.rememberProduct(values.barcode, values);
     }
   }
 
@@ -140,8 +180,8 @@ function InventoryScreen() {
 
   async function handlePickSlot(spool: Spool, location: string | null) {
     setScreen(null);
-    if (location) await loadSpool(db, spool.id, location);
-    else await openSpool(db, spool.id);
+    if (location) await store.loadSpool(spool.id, location);
+    else await store.openSpool(spool.id);
     await refresh();
     setTab('inUse');
   }
@@ -152,14 +192,14 @@ function InventoryScreen() {
     const tray = printer.data?.trays.find((t) => trayLocationKey(t) === spool.location);
     const looksEmpty = spool.remainingWeightG <= 0 || tray?.remainPct === 0;
     const remove = async () => {
-      await unloadSpool(db, spool.id);
+      await store.unloadSpool(spool.id);
       await refresh();
     };
     if (!looksEmpty) {
       remove();
       return;
     }
-    Alert.alert(
+    showDialog(
       'Is it used up?',
       `${spool.brand} ${spool.material} – ${spool.color} looks empty.`,
       [
@@ -168,7 +208,7 @@ function InventoryScreen() {
         {
           text: 'Used up',
           onPress: async () => {
-            await markFinished(db, spool.id);
+            await store.markFinished(spool.id);
             await refresh();
           },
         },
@@ -177,12 +217,12 @@ function InventoryScreen() {
   }
 
   async function handleUse(spool: Spool, grams: number) {
-    await recordUsage(db, spool.id, grams);
+    await store.recordUsage(spool.id, grams);
     await refreshAndCheckLow(spool);
   }
 
   function handleFinish(spool: Spool) {
-    Alert.alert(
+    showDialog(
       'Mark as used up?',
       `${spool.brand} ${spool.material} – ${spool.color} will leave your inventory but stay in purchase history.`,
       [
@@ -191,7 +231,7 @@ function InventoryScreen() {
           text: 'Used up',
           onPress: async () => {
             setScreen(null);
-            await markFinished(db, spool.id);
+            await store.markFinished(spool.id);
             await refresh();
           },
         },
@@ -200,7 +240,7 @@ function InventoryScreen() {
   }
 
   function handleDelete(spool: Spool) {
-    Alert.alert(
+    showDialog(
       'Delete spool?',
       `${spool.brand} ${spool.material} – ${spool.color}\n\nThis also removes it from purchase history. If you finished the spool, use "Mark as used up" instead.`,
       [
@@ -210,7 +250,7 @@ function InventoryScreen() {
           style: 'destructive',
           onPress: async () => {
             setScreen(null);
-            await deleteSpool(db, spool.id);
+            await store.deleteSpool(spool.id);
             await refresh();
           },
         },
@@ -231,7 +271,10 @@ function InventoryScreen() {
   return (
     <SafeAreaView style={styles.screen}>
       <View style={styles.header}>
-        <Text style={styles.title}>Track My Filament</Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.title}>Track My Filament</Text>
+          <AccountButton />
+        </View>
         <View style={styles.tabs}>
           <TabButton label="In Use" active={tab === 'inUse'} onPress={() => setTab('inUse')} />
           <TabButton label="Stock" active={tab === 'stock'} onPress={() => setTab('stock')} />
@@ -278,6 +321,8 @@ function InventoryScreen() {
           onDelete={handleDelete}
           onLoad={(spool) => setScreen({ kind: 'pickSlot', spool, allowSkip: false })}
           onRemove={handleRemove}
+          printJobs={printJobs}
+          onUndoPrint={handleUndoPrint}
         />
       ) : null}
 
@@ -355,7 +400,13 @@ function TabButton(props: { label: string; active: boolean; onPress: () => void 
 }
 
 const useStyles = themedStyles((c) => ({
-  screen: { flex: 1, backgroundColor: c.background },
+  screen: {
+    flex: 1,
+    backgroundColor: c.background,
+    // In a desktop browser, keep the layout phone-width-ish and centered instead of stretched.
+    ...(Platform.OS === 'web' ? { width: '100%', maxWidth: 760, alignSelf: 'center' } : null),
+  },
+  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   modal: { flex: 1, backgroundColor: c.background },
   header: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12 },
   title: { fontSize: 30, fontWeight: '700', color: c.text },

@@ -2,6 +2,7 @@ import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'ex
 import { useRef } from 'react';
 import { Button, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import '../barcodeSetup';
 import { themedStyles, useTheme } from '../theme';
 
 type Props = {

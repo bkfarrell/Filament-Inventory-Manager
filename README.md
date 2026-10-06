@@ -24,6 +24,14 @@ The app has three tabs:
   much is left), read through Home Assistant (see "Printer connection" below)
 - **Reports:** spending and purchase history (see below)
 
+**Automatic usage tracking:** when a print finishes, the filament it used (as reported by the
+printer, per AMS slot) is subtracted from the spool linked to each slot, and the print is added to
+those spools' history. A failed or cancelled print subtracts only the share that was printed
+(e.g. 30% done → 30% of the filament). Each print counts once, and only prints that end after you
+connect the printer are counted. In Use shows **Recent prints** with an **Undo** button. On the
+web version the server watches the printer itself, so prints are counted even when no one has the
+page open; the iPhone app counts them whenever it's open.
+
 Every spool keeps a **history** (shown at the bottom of its edit screen): when it was bought,
 opened, loaded into or removed from each AMS slot, prints logged, amount-left changes, and when it
 was used up.
@@ -106,12 +114,16 @@ right away.** That's the main loop you'll use while building.
 | `src/components/BarcodeScanner.tsx` | The camera screen that reads a box's barcode |
 | `src/components/StockScreen.tsx` | The Stock tab: sealed spools grouped by material and color |
 | `src/stock.ts` | The grouping and counting behind the Stock tab |
+| `src/components/RecentPrints.tsx` | The Recent prints card (automatic usage, with Undo) |
+| `src/printerParse.ts` | Reads the printer's status, AMS slots and per-slot print usage from Home Assistant |
 | `src/components/InUseScreen.tsx` | The In Use tab: In the AMS and Available sections |
 | `src/components/SlotPicker.tsx` | Choosing which AMS slot a spool goes into |
 | `src/components/SpoolHistory.tsx` | A spool's history timeline |
 | `src/locations.ts` | AMS slot names, ordering, and matching them to the printer's slots |
 | `src/components/TrayRow.tsx` | How one AMS slot is shown (used on In Use and Printer) |
 | `src/usePrinter.ts` | Reads the printer every 15 seconds while a screen shows it |
+| `src/store.ts`, `src/StoreProvider.tsx` | Where data lives: the phone's database (`.web.tsx`: the server, with sign-in) |
+| `server/` | The web app's server: accounts, per-person databases, Home Assistant relay, macOS installer |
 | `src/components/PrinterScreen.tsx` | The Printer tab: Home Assistant connection, printer status, AMS slots |
 | `src/homeAssistant.ts` | Talks to Home Assistant and recognizes the Bambu Lab printer and AMS entities |
 | `src/components/ReportsScreen.tsx` | The Reports tab: totals, monthly chart, breakdowns, purchase history |
@@ -162,6 +174,88 @@ install from the TestFlight app. Run the build command again to ship an update.
 Settings already in place: bundle ID `com.bkfarrell.filamentinventory` (in `app.json`, permanent
 after the first upload), automatic build numbers (`eas.json`), the export-compliance answer, the
 app icon, and camera / local network permission messages.
+
+## Web app (run on your own computer, with accounts)
+
+Besides the iPhone app, Track My Filament can run as a **web app served from your own computer**
+(for example a Mac Studio). Everyone in the house can use it from a phone or computer browser,
+including the **phone's camera for scanning boxes**.
+
+- **Home network only.** The server refuses connections from anywhere except this computer and
+  private home-network addresses. (Set `ALLOW_ANY_NETWORK=1` only if you know you need otherwise.)
+- **Secure (HTTPS).** Phone browsers only allow the camera on secure pages, so the server uses
+  its own home certificate (see "Phone setup" below).
+- **Separate from the iPhone app.** The web app keeps its own data on the server; it doesn't sync
+  with the phone app.
+- **Accounts.** The first account you create is the admin. The admin adds accounts for everyone
+  else (account menu, top right → People). Everyone's spools, stock, history, reports and printer
+  connection are completely separate.
+- **Data** is stored on the server's disk: `accounts.db` plus one database per person in `users/`.
+  Removed accounts are moved to `deleted/`, not erased.
+- **Printer:** the server talks to Home Assistant for you, so no Home Assistant changes are needed.
+
+### Running it on a Mac (background service)
+
+You need [Node.js](https://nodejs.org) **22.18 or newer** (the LTS download is fine). Then:
+
+```bash
+git clone https://github.com/bkfarrell/Filament-Inventory-Manager.git
+cd Filament-Inventory-Manager
+./server/macos/install.sh
+```
+
+That builds the web app, creates the HTTPS certificate, and installs a background service that
+starts when you log in and restarts if it stops. It prints the address to use, e.g.
+**https://Mac-Studio.local:8787**. If macOS asks whether "node" may accept incoming connections,
+click **Allow**.
+
+- Data: `~/Library/Application Support/TrackMyFilament` (included in Time Machine backups)
+- Log: `~/Library/Logs/TrackMyFilament.log`
+- Update: `git pull` then `./server/macos/install.sh` again
+- Remove the service: `./server/macos/install.sh uninstall` (keeps your data)
+- Different port: `PORT=9000 ./server/macos/install.sh`
+
+### Phone setup (once per phone)
+
+The server signs its HTTPS certificate with a small **Track My Filament Home CA** that is only
+allowed to vouch for local names (`*.local`) and private home addresses, so it can't be used to
+impersonate real websites. Each phone needs to trust it once:
+
+1. Get the file `ca.crt` onto the iPhone: AirDrop it from
+   `~/Library/Application Support/TrackMyFilament/tls/ca.crt`, or open
+   `https://<your-mac>.local:8787/ca.crt` in Safari (tap through the warning that one time).
+2. **Settings → General → VPN & Device Management** → tap the downloaded profile → **Install**.
+3. **Settings → General → About → Certificate Trust Settings** → turn on
+   **Track My Filament Home CA**.
+4. Open `https://<your-mac>.local:8787` in Safari. It should show as secure. Tip: **Share → Add
+   to Home Screen** makes it open like an app.
+
+Computers can do the same (on a Mac, double-click `ca.crt` and set it to "Always Trust" in
+Keychain Access), or just accept the browser's warning, since they rarely need the camera.
+
+### Checking the printer connection
+
+To see exactly what the app recognizes from your printer (status and every AMS slot), run this
+on the server:
+
+```bash
+npm run ha:check
+```
+
+It asks for your Home Assistant address and token, prints what it found, and saves
+`ha-report.txt` (the printer's raw entities, never your token) to share if anything looks wrong.
+
+### Running it by hand (any computer)
+
+```bash
+npm install
+npm run build:web        # builds the web app into dist/
+./server/make-cert.sh    # optional: HTTPS certificate (needed for phone cameras)
+npm run server           # https://localhost:8787 (or http:// without a certificate)
+```
+
+Settings (environment variables): `PORT` (default 8787), `HOST` (default all interfaces),
+`DATA_DIR` (default `./data`), `WEB_DIR` (default `./dist`), `TLS_CERT` / `TLS_KEY`.
 
 ## Useful commands
 

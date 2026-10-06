@@ -1,28 +1,27 @@
-import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 
-import { listEvents, type SpoolEvent } from '../db';
+import type { SpoolEvent } from '../db';
+import { formatWhen } from '../dates';
 import { formatLocation } from '../locations';
+import { useStore } from '../store';
 import { themedStyles } from '../theme';
-
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 // Everything that has happened to one spool, newest first.
 export default function SpoolHistory({ spoolId }: { spoolId: number }) {
   const styles = useStyles();
-  const db = useSQLiteContext();
+  const store = useStore();
   const [events, setEvents] = useState<SpoolEvent[] | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    listEvents(db, spoolId).then((list) => {
+    store.listEvents(spoolId).then((list) => {
       if (!cancelled) setEvents(list);
     });
     return () => {
       cancelled = true;
     };
-  }, [db, spoolId]);
+  }, [store, spoolId]);
 
   return (
     <View style={styles.section}>
@@ -39,6 +38,13 @@ export default function SpoolHistory({ spoolId }: { spoolId: number }) {
       ))}
     </View>
   );
+}
+
+// "138.63|Benchy" → ["138.6", "Benchy"]
+function splitJob(detail: string): [string, string] {
+  const i = detail.indexOf('|');
+  const grams = Number(i < 0 ? detail : detail.slice(0, i));
+  return [String(Math.round(grams * 10) / 10), i < 0 ? 'a print' : detail.slice(i + 1)];
 }
 
 function describe(e: SpoolEvent) {
@@ -61,22 +67,17 @@ function describe(e: SpoolEvent) {
     }
     case 'finished':
       return 'Marked as used up';
+    case 'printed': {
+      const [grams, job] = splitJob(e.detail);
+      return `Used ${grams} g printing “${job}”`;
+    }
+    case 'print_undone': {
+      const [grams, job] = splitJob(e.detail);
+      return `Put back ${grams} g from “${job}” (undone)`;
+    }
     default:
       return e.type;
   }
-}
-
-// "Oct 3, 2026" for date-only entries, "Oct 3, 2026 · 4:12 PM" when a time is known.
-function formatWhen(at: string) {
-  if (/^\d{4}-\d{2}-\d{2}$/.test(at)) {
-    const [y, m, d] = at.split('-').map(Number);
-    return `${MONTHS[m - 1]} ${d}, ${y}`;
-  }
-  const d = new Date(at);
-  if (Number.isNaN(d.getTime())) return at;
-  const h = d.getHours();
-  const time = `${h % 12 || 12}:${String(d.getMinutes()).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
-  return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()} · ${time}`;
 }
 
 const useStyles = themedStyles((c) => ({

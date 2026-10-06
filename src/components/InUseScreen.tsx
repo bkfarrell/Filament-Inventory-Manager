@@ -1,9 +1,10 @@
 import { ScrollView, Text, View } from 'react-native';
 
-import type { Spool } from '../db';
+import type { PrintJob, Spool } from '../db';
 import type { PrinterData, Tray } from '../homeAssistant';
 import { compareLocations, trayLocationKey } from '../locations';
 import { themedStyles } from '../theme';
+import RecentPrints from './RecentPrints';
 import SpoolCard from './SpoolCard';
 import TrayRow from './TrayRow';
 
@@ -19,6 +20,8 @@ type Props = {
   onDelete: (spool: Spool) => void;
   onLoad: (spool: Spool) => void;
   onRemove: (spool: Spool) => void;
+  printJobs: PrintJob[]; // prints counted automatically, newest first
+  onUndoPrint: (job: PrintJob) => void;
 };
 
 export default function InUseScreen(props: Props) {
@@ -54,6 +57,7 @@ export default function InUseScreen(props: Props) {
 
   return (
     <ScrollView contentContainerStyle={styles.content}>
+      <RecentPrints jobs={props.printJobs} onUndo={props.onUndoPrint} />
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>In the AMS</Text>
         <Text style={styles.count}>{loaded.length}</Text>
