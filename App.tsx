@@ -1,6 +1,6 @@
 import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Modal, Platform, Pressable, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
@@ -19,12 +19,14 @@ import {
   justWentLow,
   normalizeBarcode,
   type NewSpool,
+  type PrintJob,
   type Product,
   type Spool,
 } from './src/db';
 import { showDialog } from './src/dialogs';
 import { trayLocationKey, formatLocation, slotOptions } from './src/locations';
 import { notifyLowStock, setupNotifications } from './src/notifications';
+import { printSnapshot } from './src/printerParse';
 import { useStore } from './src/store';
 import StoreProvider from './src/StoreProvider';
 import { themedStyles, useTheme } from './src/theme';
@@ -64,6 +66,11 @@ function InventoryScreen() {
   const store = useStore();
   const [spools, setSpools] = useState<Spool[]>([]); // spools you still have
   const [allSpools, setAllSpools] = useState<Spool[]>([]); // every purchase, for reports
+  const [printJobs, setPrintJobs] = useState<PrintJob[]>([]); // prints counted automatically
+  const spoolsRef = useRef(spools); // latest list, for comparing before/after a print
+  useEffect(() => {
+    spoolsRef.current = spools;
+  }, [spools]);
   // In Use = opened spools, Stock = sealed spools, Printer = live AMS, Reports = spending.
   const [tab, setTab] = useState<'inUse' | 'stock' | 'printer' | 'reports'>('inUse');
   const [screen, setScreen] = useState<Screen>(null);
@@ -71,13 +78,55 @@ function InventoryScreen() {
   // Live printer reading, used on In Use and in the slot picker. Settings are re-read when
   // the tab changes, so connecting in the Printer tab takes effect here too.
   const [printerSettings] = useSavedSettings(tab);
-  const watchPrinter = tab === 'inUse' || screen?.kind === 'pickSlot';
+  // Read the printer on every tab (so finished prints are counted while the app is open),
+  // except Printer, which reads it itself.
+  const watchPrinter = tab !== 'printer' || screen?.kind === 'pickSlot';
   const printer = usePrinterData(watchPrinter ? (printerSettings ?? null) : null);
 
   const refresh = useCallback(async () => {
     setSpools(await store.listSpools());
     setAllSpools(await store.listAllSpools());
+    setPrintJobs(await store.listPrintJobs(5));
   }, [store]);
+
+  // Each printer reading: if a print just ended, subtract its filament from the spools in the
+  // slots it used (the store makes sure each print only counts once).
+  useEffect(() => {
+    if (!printer.data) return;
+    let cancelled = false;
+    store.syncPrintUsage(printSnapshot(printer.data.printer)).then(async (job) => {
+      if (cancelled || !job) return;
+      const before = spoolsRef.current;
+      await refresh();
+      const after = await store.listSpools();
+      for (const e of job.entries) {
+        const b = before.find((s) => s.id === e.spoolId);
+        const a = after.find((s) => s.id === e.spoolId);
+        if (b && a && justWentLow(b, a)) await notifyLowStock(a);
+      }
+    }, () => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [printer.data, store, refresh]);
+
+  function handleUndoPrint(job: PrintJob) {
+    const grams = job.entries.reduce((sum, e) => sum + (e.spoolId !== null ? e.grams : 0), 0);
+    showDialog(
+      'Undo this print?',
+      `Puts ${Math.round(grams * 10) / 10} g back on the spools “${job.taskName}” used.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Undo',
+          onPress: async () => {
+            await store.undoPrintJob(job.jobKey);
+            await refresh();
+          },
+        },
+      ]
+    );
+  }
 
   useEffect(() => {
     refresh();
@@ -272,6 +321,8 @@ function InventoryScreen() {
           onDelete={handleDelete}
           onLoad={(spool) => setScreen({ kind: 'pickSlot', spool, allowSkip: false })}
           onRemove={handleRemove}
+          printJobs={printJobs}
+          onUndoPrint={handleUndoPrint}
         />
       ) : null}
 

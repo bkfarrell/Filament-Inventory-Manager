@@ -32,6 +32,22 @@ export type PrinterStatus = {
   remaining: string | null; // e.g. "1 h 25 min"
   taskName: string | null;
   printWeightG: number | null; // estimated filament weight of the current job, if reported
+  startTime: string | null; // when the current/last job started (identifies the job)
+  endTime: string | null; // when it ended / is expected to end
+  usage: SlotUsage[]; // the job's filament weight per slot, from the slicer
+};
+
+// How much filament a print job uses from one slot.
+export type SlotUsage = { location: string; grams: number };
+
+// A finished (or failed) print, ready to subtract from the spools in its slots.
+export type PrintSnapshot = {
+  jobKey: string; // start time + job name: the same job always gives the same key
+  taskName: string;
+  result: 'finished' | 'failed';
+  progressPct: number | null;
+  endedAt: string; // when the job ended (or started, if the end isn't reported)
+  usage: SlotUsage[]; // already scaled down for failed prints
 };
 
 export type PrinterData = {
@@ -166,6 +182,8 @@ function toPrinterStatus(entities: HaEntity[]): PrinterStatus | null {
   const remaining = find('remaining_time');
   const task = find('task_name');
   const weight = find('print_weight');
+  const start = find('start_time');
+  const end = find('end_time');
   const friendly = str(statusEntity.attributes.friendly_name).replace(/\s*print status$/i, '');
   // Prefer the printer's own name ("H2C") over the device name with its serial number.
   const ownName = find('printer_name');
@@ -181,6 +199,61 @@ function toPrinterStatus(entities: HaEntity[]): PrinterStatus | null {
     remaining: remaining ? formatDuration(remaining) : null,
     taskName: task && !isUnknown(task.state) ? task.state : null,
     printWeightG: weight ? num(weight.state) : null,
+    startTime: start && !isUnknown(start.state) ? start.state : null,
+    endTime: end && !isUnknown(end.state) ? end.state : null,
+    usage: weight ? usageBySlot(weight.attributes) : [],
+  };
+}
+
+// The print weight sensor lists grams per slot as attributes, e.g. {"AMS 1 Tray 2": 138.63}.
+function usageBySlot(attributes: Record<string, unknown>): SlotUsage[] {
+  const usage: SlotUsage[] = [];
+  for (const [name, value] of Object.entries(attributes)) {
+    const grams = num(value);
+    const location = slotKeyFromName(name);
+    if (location && grams !== null && grams > 0) usage.push({ location, grams });
+  }
+  return usage;
+}
+
+// "AMS 1 Tray 2" → "ams-1-2"; "AMS 128 Tray 1" / "AMS HT 1 Tray 1" → "ams-128-1";
+// "External Spool" / "External Spool 2" → "ext-1" / "ext-2".
+export function slotKeyFromName(name: string): string | null {
+  const ams = name.match(/^AMS\s*(HT)?\s*(\d+)\s*Tray\s*(\d+)$/i);
+  if (ams) {
+    const n = Number(ams[2]);
+    const unit = ams[1] && n < 128 ? 127 + n : n;
+    return amsKey(unit, Number(ams[3]));
+  }
+  const ext = name.match(/^External(?:\s*Spool)?\s*(\d*)$/i);
+  if (ext) return `ext-${ext[1] || '1'}`;
+  return null;
+}
+
+// A spool's AMS location key ("ams-2-3"). See src/locations.ts.
+export function amsKey(unit: number, slot: number) {
+  return `ams-${unit}-${slot}`;
+}
+
+// When the printer has just finished or failed a job, describes how much filament it used
+// from each slot. Returns null otherwise (still printing, idle, or nothing reported).
+export function printSnapshot(p: PrinterStatus | null): PrintSnapshot | null {
+  if (!p || !p.startTime || p.usage.length === 0) return null;
+  const raw = p.rawStatus.toLowerCase();
+  const result = raw === 'finish' || raw === 'finished' ? 'finished' : raw === 'failed' ? 'failed' : null;
+  if (!result) return null;
+  // A failed or cancelled print only used part of its filament: scale by how far it got.
+  const share = result === 'failed' ? Math.min(100, Math.max(0, p.progressPct ?? 0)) / 100 : 1;
+  const usage = p.usage
+    .map((u) => ({ location: u.location, grams: Math.round(u.grams * share * 100) / 100 }))
+    .filter((u) => u.grams > 0);
+  return {
+    jobKey: `${p.startTime}|${p.taskName ?? ''}`,
+    taskName: p.taskName ?? 'Print',
+    result,
+    progressPct: p.progressPct,
+    endedAt: p.endTime ?? p.startTime,
+    usage,
   };
 }
 

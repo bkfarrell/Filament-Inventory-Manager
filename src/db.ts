@@ -1,5 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import type { PrintSnapshot } from './printerParse';
+
 // A spool is one roll of filament you own.
 export type Spool = {
   id: number;
@@ -38,7 +40,7 @@ export type Product = {
 // A spool counts as "low" when this many grams or fewer are left.
 export const LOW_STOCK_THRESHOLD_G = 200;
 
-const SCHEMA_VERSION = 7;
+const SCHEMA_VERSION = 8;
 
 // Runs once when the app opens. It creates the tables on first launch and
 // upgrades them in later versions. Raise SCHEMA_VERSION and add a new
@@ -133,6 +135,24 @@ export async function migrateDb(db: SQLiteDatabase) {
     version = 7;
   }
 
+  if (version < 8) {
+    // Prints counted automatically from the printer (each only once), and small app settings.
+    await db.execAsync(`
+      CREATE TABLE print_jobs (
+        job_key TEXT PRIMARY KEY,
+        task_name TEXT NOT NULL,
+        result TEXT NOT NULL,
+        status TEXT NOT NULL,
+        progress REAL,
+        ended_at TEXT NOT NULL,
+        recorded_at TEXT NOT NULL,
+        entries TEXT NOT NULL
+      );
+      CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+    `);
+    version = 8;
+  }
+
   await db.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
 }
 
@@ -200,7 +220,9 @@ export type SpoolEventType =
   | 'unloaded'
   | 'used'
   | 'adjusted'
-  | 'finished';
+  | 'finished'
+  | 'printed' // filament used by a print, counted automatically (detail: "grams|job name")
+  | 'print_undone'; // an automatically counted print was undone (detail: "grams|job name")
 
 export type SpoolEvent = {
   id: number;
@@ -408,6 +430,162 @@ export async function recordUsage(db: SQLiteDatabase, id: number, grams: number)
     );
     if (!before.opened_at) await logEvent(db, id, 'opened');
     await logEvent(db, id, 'used', String(grams));
+  });
+}
+
+// ---- Prints counted automatically from the printer ----
+
+export type PrintJobEntry = {
+  location: string; // AMS slot, e.g. "ams-1-2"
+  grams: number;
+  spoolId: number | null; // the spool it was subtracted from; null if no spool was in that slot
+  spoolName: string | null; // e.g. "Bambu PLA Matte · Black", as it was at the time
+};
+
+export type PrintJob = {
+  jobKey: string;
+  taskName: string;
+  result: 'finished' | 'failed';
+  status: 'applied' | 'undone' | 'skipped';
+  progress: number | null;
+  endedAt: string;
+  recordedAt: string;
+  entries: PrintJobEntry[];
+};
+
+type PrintJobRow = {
+  job_key: string;
+  task_name: string;
+  result: 'finished' | 'failed';
+  status: 'applied' | 'undone' | 'skipped';
+  progress: number | null;
+  ended_at: string;
+  recorded_at: string;
+  entries: string;
+};
+
+function jobFromRow(r: PrintJobRow): PrintJob {
+  return {
+    jobKey: r.job_key,
+    taskName: r.task_name,
+    result: r.result,
+    status: r.status,
+    progress: r.progress,
+    endedAt: r.ended_at,
+    recordedAt: r.recorded_at,
+    entries: JSON.parse(r.entries) as PrintJobEntry[],
+  };
+}
+
+async function setting(db: SQLiteDatabase, key: string) {
+  const row = await db.getFirstAsync<{ value: string }>('SELECT value FROM app_settings WHERE key = ?', key);
+  return row?.value ?? null;
+}
+
+// Called with every printer reading. When a print has just finished (or failed), subtracts
+// its filament from the spools in the slots it used, once per print. Prints that ended
+// before usage tracking started are recorded as skipped, so old jobs never change your
+// inventory. Returns the newly counted print, or null if there was nothing new.
+export async function syncPrintUsage(
+  db: SQLiteDatabase,
+  snapshot: PrintSnapshot | null
+): Promise<PrintJob | null> {
+  let created: PrintJob | null = null;
+  await db.withTransactionAsync(async () => {
+    const now = new Date().toISOString();
+    let since = await setting(db, 'usage_tracking_since');
+    if (!since) {
+      since = now;
+      await db.runAsync("INSERT INTO app_settings (key, value) VALUES ('usage_tracking_since', ?)", now);
+    }
+    if (!snapshot) return;
+    const seen = await db.getFirstAsync('SELECT 1 FROM print_jobs WHERE job_key = ?', snapshot.jobKey);
+    if (seen) return;
+
+    const skipped = new Date(snapshot.endedAt).getTime() < new Date(since).getTime();
+    const entries: PrintJobEntry[] = [];
+    for (const u of snapshot.usage) {
+      const spool = skipped
+        ? null
+        : await db.getFirstAsync<SpoolRow>(
+            'SELECT * FROM spools WHERE location = ? AND finished_at IS NULL',
+            u.location
+          );
+      if (spool) {
+        await db.runAsync(
+          'UPDATE spools SET remaining_weight_g = MAX(0, remaining_weight_g - ?) WHERE id = ?',
+          u.grams,
+          spool.id
+        );
+        await logEvent(db, spool.id, 'printed', `${u.grams}|${snapshot.taskName}`);
+      }
+      entries.push({
+        location: u.location,
+        grams: u.grams,
+        spoolId: spool?.id ?? null,
+        spoolName: spool ? `${spool.brand} ${spool.material} · ${spool.color}` : null,
+      });
+    }
+    const status = skipped ? 'skipped' : 'applied';
+    await db.runAsync(
+      `INSERT INTO print_jobs
+         (job_key, task_name, result, status, progress, ended_at, recorded_at, entries)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      snapshot.jobKey,
+      snapshot.taskName,
+      snapshot.result,
+      status,
+      snapshot.progressPct,
+      snapshot.endedAt,
+      now,
+      JSON.stringify(entries)
+    );
+    if (!skipped) {
+      created = {
+        jobKey: snapshot.jobKey,
+        taskName: snapshot.taskName,
+        result: snapshot.result,
+        status,
+        progress: snapshot.progressPct,
+        endedAt: snapshot.endedAt,
+        recordedAt: now,
+        entries,
+      };
+    }
+  });
+  return created;
+}
+
+// The most recent automatically counted prints (skipped old ones left out).
+export async function listPrintJobs(db: SQLiteDatabase, limit = 5): Promise<PrintJob[]> {
+  const rows = await db.getAllAsync<PrintJobRow>(
+    "SELECT * FROM print_jobs WHERE status != 'skipped' ORDER BY ended_at DESC LIMIT ?",
+    limit
+  );
+  return rows.map(jobFromRow);
+}
+
+// Puts back the filament an automatically counted print subtracted.
+export async function undoPrintJob(db: SQLiteDatabase, jobKey: string) {
+  await db.withTransactionAsync(async () => {
+    const row = await db.getFirstAsync<PrintJobRow>(
+      "SELECT * FROM print_jobs WHERE job_key = ? AND status = 'applied'",
+      jobKey
+    );
+    if (!row) return;
+    const job = jobFromRow(row);
+    for (const e of job.entries) {
+      if (e.spoolId === null) continue;
+      const spool = await getRow(db, e.spoolId);
+      if (!spool) continue;
+      await db.runAsync(
+        'UPDATE spools SET remaining_weight_g = remaining_weight_g + ? WHERE id = ?',
+        e.grams,
+        e.spoolId
+      );
+      await logEvent(db, e.spoolId, 'print_undone', `${e.grams}|${job.taskName}`);
+    }
+    await db.runAsync("UPDATE print_jobs SET status = 'undone' WHERE job_key = ?", jobKey);
   });
 }
 

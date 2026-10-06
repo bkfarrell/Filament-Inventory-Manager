@@ -1,5 +1,7 @@
 import type { Tray } from './homeAssistant';
-import { amsName, externalKey, externalLabel, slotLabel } from './printerParse';
+import { amsKey, amsName, externalKey, externalLabel, slotLabel } from './printerParse';
+
+export { amsKey };
 
 // A spool's location is stored as a short key:
 //   "ams-2-3"  → AMS 2, slot 3
@@ -12,10 +14,6 @@ export type SlotOption = {
   group: string; // "AMS 2" or "External", for grouping in the picker
   tray: Tray | null; // what the printer reports in this slot right now, if connected
 };
-
-export function amsKey(ams: number, slot: number) {
-  return `ams-${ams}-${slot}`;
-}
 
 export function formatLocation(key: string) {
   const ams = key.match(/^ams-(\d+)-(\d+)$/);

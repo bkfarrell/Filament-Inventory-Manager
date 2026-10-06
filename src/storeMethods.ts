@@ -15,6 +15,9 @@ export const STORE_METHODS = [
   'listEvents',
   'findProduct',
   'rememberProduct',
+  'syncPrintUsage',
+  'listPrintJobs',
+  'undoPrintJob',
 ] as const;
 
 export type StoreMethod = (typeof STORE_METHODS)[number];

@@ -19,9 +19,13 @@ import {
   openSpool,
   recordUsage,
   rememberProduct,
+  syncPrintUsage,
+  listPrintJobs,
+  undoPrintJob,
   unloadSpool,
   updateSpool,
 } from '../src/db.ts';
+import { looksLikeTray, parsePrinterData, printSnapshot, type HaEntity } from '../src/printerParse.ts';
 import type { StoreMethod } from '../src/storeMethods.ts';
 import { Accounts, type User } from './accounts.ts';
 import { openDatabase } from './sqlite.ts';
@@ -38,6 +42,7 @@ import { openDatabase } from './sqlite.ts';
 //   DATA_DIR  where data is stored (default ./data next to this project)
 //   WEB_DIR   the built web app (default ./dist)
 //   ALLOW_ANY_NETWORK=1  also accept requests from outside your home network (off by default)
+//   PRINT_CHECK_SECONDS  how often to check printers for finished prints (default 60)
 //
 // HTTPS: if DATA_DIR/tls/server.crt and server.key exist (made by server/make-cert.sh), the
 // server uses https://, which phones need for the camera. TLS_CERT / TLS_KEY override the paths.
@@ -87,6 +92,9 @@ const storeFunctions = {
   listEvents,
   findProduct,
   rememberProduct,
+  syncPrintUsage,
+  listPrintJobs,
+  undoPrintJob,
 } satisfies Record<StoreMethod, (db: SQLiteDatabase, ...args: never[]) => unknown>;
 
 // ---- Small HTTP helpers ----
@@ -477,6 +485,66 @@ const handler: RequestListener = async (req, res) => {
 const server = USE_TLS
   ? createHttpsServer({ cert: readFileSync(TLS_CERT), key: readFileSync(TLS_KEY) }, handler)
   : createServer(handler);
+
+// ---- Counting finished prints in the background ----
+//
+// Every minute, reads the printer of each person who has connected Home Assistant and, when a
+// print has ended, subtracts its filament from their spools (same logic as the app, so a
+// print is only ever counted once, whether the server or an open browser sees it first).
+
+const PRINT_CHECK_MS = Math.max(15, Number(process.env.PRINT_CHECK_SECONDS ?? 60)) * 1000;
+const lastPrintCheckError = new Map<number, string>();
+let checkingPrints = false;
+
+async function readPrinter(url: string, token: string) {
+  let ids: Set<string> | null = null;
+  try {
+    const res = await haRequest(url, token, '/api/template', 'POST', JSON.stringify({
+      template: "{{ integration_entities('bambu_lab') | tojson }}",
+    }));
+    const parsed = res.ok ? JSON.parse(await res.text()) : null;
+    if (Array.isArray(parsed) && parsed.length > 0) ids = new Set(parsed as string[]);
+  } catch {
+    // fall back to matching by name below
+  }
+  const res = await haRequest(url, token, '/api/states', 'GET');
+  if (!res.ok) throw new Error(`Home Assistant returned ${res.status}`);
+  const all = (await res.json()) as HaEntity[];
+  const entities = ids
+    ? all.filter((e) => ids.has(e.entity_id))
+    : all.filter((e) => looksLikeTray(e) || /_print_status$/.test(e.entity_id));
+  return parsePrinterData(entities);
+}
+
+async function checkPrints() {
+  if (checkingPrints) return;
+  checkingPrints = true;
+  try {
+    for (const user of accounts.listUsers()) {
+      const ha = accounts.getHaSettings(user.id);
+      if (!ha) continue;
+      try {
+        const data = await readPrinter(ha.url, ha.token);
+        const job = await syncPrintUsage(await dbFor(user.id), printSnapshot(data.printer));
+        if (job) {
+          const grams = job.entries.reduce((sum, e) => sum + e.grams, 0);
+          console.log(`Counted print "${job.taskName}" for ${user.username}: ${Math.round(grams)} g`);
+        }
+        lastPrintCheckError.delete(user.id);
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        if (lastPrintCheckError.get(user.id) !== message) {
+          console.log(`Couldn't check the printer for ${user.username}: ${message}`);
+          lastPrintCheckError.set(user.id, message);
+        }
+      }
+    }
+  } finally {
+    checkingPrints = false;
+  }
+}
+
+setInterval(checkPrints, PRINT_CHECK_MS);
 
 server.listen(PORT, HOST, () => {
   const scheme = USE_TLS ? 'https' : 'http';

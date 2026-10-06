@@ -13,6 +13,9 @@ import {
   openSpool,
   recordUsage,
   rememberProduct,
+  syncPrintUsage,
+  listPrintJobs,
+  undoPrintJob,
   unloadSpool,
   updateSpool,
 } from './db';
@@ -34,6 +37,9 @@ export const storeFunctions = {
   listEvents,
   findProduct,
   rememberProduct,
+  syncPrintUsage,
+  listPrintJobs,
+  undoPrintJob,
 } satisfies Record<StoreMethod, (db: SQLiteDatabase, ...args: never[]) => unknown>;
 
 // Everything the screens need to read and change data, without caring where it lives.

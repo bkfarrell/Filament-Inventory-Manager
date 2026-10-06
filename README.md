@@ -24,6 +24,14 @@ The app has three tabs:
   much is left), read through Home Assistant (see "Printer connection" below)
 - **Reports:** spending and purchase history (see below)
 
+**Automatic usage tracking:** when a print finishes, the filament it used (as reported by the
+printer, per AMS slot) is subtracted from the spool linked to each slot, and the print is added to
+those spools' history. A failed or cancelled print subtracts only the share that was printed
+(e.g. 30% done → 30% of the filament). Each print counts once, and only prints that end after you
+connect the printer are counted. In Use shows **Recent prints** with an **Undo** button. On the
+web version the server watches the printer itself, so prints are counted even when no one has the
+page open; the iPhone app counts them whenever it's open.
+
 Every spool keeps a **history** (shown at the bottom of its edit screen): when it was bought,
 opened, loaded into or removed from each AMS slot, prints logged, amount-left changes, and when it
 was used up.
@@ -106,6 +114,8 @@ right away.** That's the main loop you'll use while building.
 | `src/components/BarcodeScanner.tsx` | The camera screen that reads a box's barcode |
 | `src/components/StockScreen.tsx` | The Stock tab: sealed spools grouped by material and color |
 | `src/stock.ts` | The grouping and counting behind the Stock tab |
+| `src/components/RecentPrints.tsx` | The Recent prints card (automatic usage, with Undo) |
+| `src/printerParse.ts` | Reads the printer's status, AMS slots and per-slot print usage from Home Assistant |
 | `src/components/InUseScreen.tsx` | The In Use tab: In the AMS and Available sections |
 | `src/components/SlotPicker.tsx` | Choosing which AMS slot a spool goes into |
 | `src/components/SpoolHistory.tsx` | A spool's history timeline |
