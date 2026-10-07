@@ -6,7 +6,6 @@ import { compareLocations, trayLocationKey } from '../locations';
 import { themedStyles } from '../theme';
 import RecentPrints from './RecentPrints';
 import SpoolCard from './SpoolCard';
-import TrayRow from './TrayRow';
 
 type Props = {
   inAms: Spool[]; // opened spools loaded in an AMS slot
@@ -35,12 +34,6 @@ export default function InUseScreen(props: Props) {
   }
 
   const loaded = [...props.inAms].sort((a, b) => compareLocations(a.location!, b.location!));
-  const trackedKeys = new Set(loaded.map((s) => s.location));
-  // Slots the printer says have filament, but no spool in the app is assigned to.
-  const unlinked = (props.printer?.trays ?? []).filter((t) => {
-    const key = trayLocationKey(t);
-    return !t.empty && key !== null && !trackedKeys.has(key);
-  });
 
   const card = (s: Spool, inAms: boolean) => (
     <SpoolCard
@@ -70,19 +63,6 @@ export default function InUseScreen(props: Props) {
         </Text>
       ) : null}
       {loaded.map((s) => card(s, true))}
-
-      {unlinked.length > 0 ? (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Also loaded, not linked to a spool</Text>
-          <Text style={styles.muted}>
-            The printer reports filament in these slots. Use “Load into AMS” on the matching spool
-            to track it.
-          </Text>
-          {unlinked.map((t, i) => (
-            <TrayRow key={t.entityId} tray={t} first={i === 0} />
-          ))}
-        </View>
-      ) : null}
 
       <View style={[styles.sectionHeader, styles.spaced]}>
         <Text style={styles.sectionTitle}>Available</Text>
@@ -116,13 +96,4 @@ const useStyles = themedStyles((c) => ({
   muted: { fontSize: 13, color: c.textMuted },
   error: { fontSize: 13, color: c.danger },
   footnote: { fontSize: 12, color: c.textMuted, textAlign: 'center', marginTop: 8 },
-  card: {
-    backgroundColor: c.surface,
-    borderRadius: 12,
-    padding: 16,
-    gap: 8,
-    borderWidth: 1,
-    borderColor: c.border,
-  },
-  cardTitle: { fontSize: 16, fontWeight: '600', color: c.text },
 }));

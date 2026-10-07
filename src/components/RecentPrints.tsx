@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import { formatWhen } from '../dates';
@@ -6,15 +7,37 @@ import { formatLocation } from '../locations';
 import { themedStyles } from '../theme';
 
 // Prints counted automatically from the printer, newest first, with Undo.
+// Starts collapsed to one line about the latest print; tap the header to see more.
 export default function RecentPrints(props: { jobs: PrintJob[]; onUndo: (job: PrintJob) => void }) {
   const styles = useStyles();
+  const [open, setOpen] = useState(false);
   if (props.jobs.length === 0) return null;
+
+  const latest = props.jobs[0];
+  const latestGrams = latest.entries.reduce((sum, e) => sum + e.grams, 0);
 
   return (
     <View style={styles.card}>
-      <Text style={styles.title}>Recent prints</Text>
-      <Text style={styles.muted}>Filament used is subtracted automatically when a print ends.</Text>
-      {props.jobs.slice(0, 3).map((job, i) => {
+      <Pressable
+        onPress={() => setOpen(!open)}
+        style={styles.header}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+      >
+        <Text style={styles.title}>Recent prints</Text>
+        <Text style={styles.chevron}>{open ? '▾' : '▸'}</Text>
+      </Pressable>
+      {!open ? (
+        <Text style={styles.muted} numberOfLines={1}>
+          Last: −{Math.round(latestGrams * 10) / 10} g
+          {latest.status === 'undone' ? ' (undone)' : ''} · {formatWhen(latest.endedAt)} ·{' '}
+          {latest.taskName}
+        </Text>
+      ) : null}
+      {open ? (
+        <Text style={styles.muted}>Filament used is subtracted automatically when a print ends.</Text>
+      ) : null}
+      {(open ? props.jobs.slice(0, 3) : []).map((job, i) => {
         const canUndo = job.status === 'applied' && job.entries.some((e) => e.spoolId !== null);
         return (
           <View key={job.jobKey} style={[styles.job, i > 0 && styles.divider]}>
@@ -67,7 +90,9 @@ const useStyles = themedStyles((c) => ({
     borderWidth: 1,
     borderColor: c.border,
   },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   title: { fontSize: 17, fontWeight: '600', color: c.text },
+  chevron: { fontSize: 16, color: c.textMuted },
   muted: { fontSize: 13, color: c.textMuted },
   job: { gap: 3, paddingTop: 8 },
   divider: { borderTopWidth: 1, borderTopColor: c.divider, marginTop: 4 },
