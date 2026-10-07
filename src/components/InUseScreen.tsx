@@ -6,6 +6,7 @@ import { compareLocations, trayLocationKey } from '../locations';
 import { themedStyles } from '../theme';
 import RecentPrints from './RecentPrints';
 import SpoolCard from './SpoolCard';
+import TrayRow from './TrayRow';
 
 type Props = {
   inAms: Spool[]; // opened spools loaded in an AMS slot
@@ -33,7 +34,16 @@ export default function InUseScreen(props: Props) {
     if (key) trayAt.set(key, t);
   }
 
-  const loaded = [...props.inAms].sort((a, b) => compareLocations(a.location!, b.location!));
+  // Everything in the AMS, in slot order: spools you've assigned to a slot, plus whatever else
+  // the printer reports loaded (shown straight from the printer's reading).
+  const assigned = new Set(props.inAms.map((s) => s.location));
+  const loaded = [
+    ...props.inAms.map((spool) => ({ key: spool.location!, spool, tray: null })),
+    ...(props.printer?.trays ?? []).flatMap((tray) => {
+      const key = trayLocationKey(tray);
+      return !tray.empty && key && !assigned.has(key) ? [{ key, spool: null, tray }] : [];
+    }),
+  ].sort((a, b) => compareLocations(a.key, b.key));
 
   const card = (s: Spool, inAms: boolean) => (
     <SpoolCard
@@ -62,7 +72,15 @@ export default function InUseScreen(props: Props) {
           an available spool below.
         </Text>
       ) : null}
-      {loaded.map((s) => card(s, true))}
+      {loaded.map((item) =>
+        item.spool ? (
+          card(item.spool, true)
+        ) : (
+          <View key={item.key} style={styles.trayCard}>
+            <TrayRow tray={item.tray} first />
+          </View>
+        )
+      )}
 
       <View style={[styles.sectionHeader, styles.spaced]}>
         <Text style={styles.sectionTitle}>Available</Text>
@@ -95,5 +113,14 @@ const useStyles = themedStyles((c) => ({
   count: { fontSize: 16, color: c.textMuted, fontWeight: '600' },
   muted: { fontSize: 13, color: c.textMuted },
   error: { fontSize: 13, color: c.danger },
+  trayCard: {
+    backgroundColor: c.surface,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    paddingTop: 6,
+    borderWidth: 1,
+    borderColor: c.border,
+  },
   footnote: { fontSize: 12, color: c.textMuted, textAlign: 'center', marginTop: 8 },
 }));

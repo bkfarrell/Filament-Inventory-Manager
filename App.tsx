@@ -262,6 +262,12 @@ function InventoryScreen() {
 
   const inUse = spools.filter((s) => s.openedAt !== null);
   const inAms = inUse.filter((s) => s.location !== null);
+  // Slots with filament in them: assigned spools plus anything else the printer reports loaded.
+  const loadedSlots = new Set(inAms.map((s) => s.location));
+  for (const t of printer.data?.trays ?? []) {
+    const key = trayLocationKey(t);
+    if (key && !t.empty) loadedSlots.add(key);
+  }
   const available = inUse.filter((s) => s.location === null);
   const sealed = spools.filter((s) => s.openedAt === null);
   // What filament is worth, based on what you paid per gram.
@@ -285,7 +291,7 @@ function InventoryScreen() {
         </View>
         {tab === 'inUse' ? (
           <Text style={styles.summary}>
-            {inAms.length} in the AMS · {available.length} available ·{' '}
+            {loadedSlots.size} in the AMS · {available.length} available ·{' '}
             {valueOf(inUse).toFixed(2)} worth left
             {lowCount > 0 ? ` · ${lowCount} low` : ''}
           </Text>
