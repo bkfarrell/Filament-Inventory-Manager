@@ -1,7 +1,7 @@
 import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Modal, Platform, Pressable, Text, View } from 'react-native';
+import { Animated, Modal, Platform, Pressable, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import AccountButton from './src/components/AccountButton';
@@ -28,6 +28,7 @@ import { trayLocationKey, formatLocation, slotOptions } from './src/locations';
 import { notifyLowStock, setupNotifications } from './src/notifications';
 import { printSnapshot } from './src/printerParse';
 import { useStore } from './src/store';
+import { useTabSwipe } from './src/useTabSwipe';
 import StoreProvider from './src/StoreProvider';
 import { themedStyles, useTheme } from './src/theme';
 import { usePrinterData, useSavedSettings } from './src/usePrinter';
@@ -72,7 +73,8 @@ function InventoryScreen() {
     spoolsRef.current = spools;
   }, [spools]);
   // In Use = opened spools, Stock = sealed spools, Printer = live AMS, Reports = spending.
-  const [tab, setTab] = useState<'inUse' | 'stock' | 'printer' | 'reports'>('inUse');
+  const [tab, setTab] = useState<Tab>('inUse');
+  const swipe = useTabSwipe(TABS, tab, setTab);
   const [screen, setScreen] = useState<Screen>(null);
 
   // Live printer reading, used on In Use and in the slot picker. Settings are re-read when
@@ -296,35 +298,39 @@ function InventoryScreen() {
         ) : null}
       </View>
 
-      {tab === 'reports' ? <ReportsScreen spools={allSpools} /> : null}
+      <View style={styles.swipeArea}>
+        <Animated.View {...swipe}>
+          {tab === 'reports' ? <ReportsScreen spools={allSpools} /> : null}
 
-      {tab === 'printer' ? <PrinterScreen /> : null}
+          {tab === 'printer' ? <PrinterScreen /> : null}
 
-      {tab === 'stock' ? (
-        <StockScreen
-          spools={sealed}
-          onOpen={handleOpen}
-          onEdit={(spool) => setScreen({ kind: 'edit', spool })}
-        />
-      ) : null}
+          {tab === 'stock' ? (
+            <StockScreen
+              spools={sealed}
+              onOpen={handleOpen}
+              onEdit={(spool) => setScreen({ kind: 'edit', spool })}
+            />
+          ) : null}
 
-      {tab === 'inUse' ? (
-        <InUseScreen
-          inAms={inAms}
-          available={available}
-          hasSealed={sealed.length > 0}
-          printer={printer.data}
-          printerConnected={!!printerSettings}
-          printerError={printerSettings ? printer.error : ''}
-          onUse={handleUse}
-          onEdit={(spool) => setScreen({ kind: 'edit', spool })}
-          onDelete={handleDelete}
-          onLoad={(spool) => setScreen({ kind: 'pickSlot', spool, allowSkip: false })}
-          onRemove={handleRemove}
-          printJobs={printJobs}
-          onUndoPrint={handleUndoPrint}
-        />
-      ) : null}
+          {tab === 'inUse' ? (
+            <InUseScreen
+              inAms={inAms}
+              available={available}
+              hasSealed={sealed.length > 0}
+              printer={printer.data}
+              printerConnected={!!printerSettings}
+              printerError={printerSettings ? printer.error : ''}
+              onUse={handleUse}
+              onEdit={(spool) => setScreen({ kind: 'edit', spool })}
+              onDelete={handleDelete}
+              onLoad={(spool) => setScreen({ kind: 'pickSlot', spool, allowSkip: false })}
+              onRemove={handleRemove}
+              printJobs={printJobs}
+              onUndoPrint={handleUndoPrint}
+            />
+          ) : null}
+        </Animated.View>
+      </View>
 
       {tab === 'inUse' || tab === 'stock' ? (
         <View style={styles.buttonRow}>
@@ -390,6 +396,10 @@ function InventoryScreen() {
   );
 }
 
+// Tab order, left to right; swiping left moves to the next one.
+const TABS = ['inUse', 'stock', 'printer', 'reports'] as const;
+type Tab = (typeof TABS)[number];
+
 function TabButton(props: { label: string; active: boolean; onPress: () => void }) {
   const styles = useStyles();
   return (
@@ -407,6 +417,7 @@ const useStyles = themedStyles((c) => ({
     ...(Platform.OS === 'web' ? { width: '100%', maxWidth: 760, alignSelf: 'center' } : null),
   },
   titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  swipeArea: { flex: 1, overflow: 'hidden' },
   modal: { flex: 1, backgroundColor: c.background },
   header: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12 },
   title: { fontSize: 30, fontWeight: '700', color: c.text },
